@@ -3,10 +3,11 @@ import { cookies } from 'next/headers';
 import { authFetch } from './supabase';
 const cookieOptions={httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax' as const,path:'/'};
 export const WORKSPACE_REFRESH_COOKIE='scout_workspace_refresh_attempt';
+export const ADMIN_REFRESH_COOKIE='scout_admin_refresh_attempt';
 type VerifiedUser={userId:string;email:string};
 
 // Server components can read cookies, but refreshing a session must happen in a route handler.
-export async function getPageUser():Promise<{user:VerifiedUser|null;refreshRequired:boolean}>{
+export async function getPageUser(refreshCookie:typeof WORKSPACE_REFRESH_COOKIE|typeof ADMIN_REFRESH_COOKIE=WORKSPACE_REFRESH_COOKIE):Promise<{user:VerifiedUser|null;refreshRequired:boolean}>{
   const jar=await cookies();
   const access=jar.get('scout_access')?.value;
   const refresh=jar.get('scout_refresh')?.value;
@@ -21,7 +22,7 @@ export async function getPageUser():Promise<{user:VerifiedUser|null;refreshRequi
       }
     }catch{}
   }
-  return {user:null,refreshRequired:!!refresh&&jar.get(WORKSPACE_REFRESH_COOKIE)?.value!=='1'};
+  return {user:null,refreshRequired:!!refresh&&jar.get(refreshCookie)?.value!=='1'};
 }
 export async function setSession(session:{access_token:string;refresh_token:string}){const jar=await cookies();jar.set('scout_access',session.access_token,{...cookieOptions,maxAge:60*60*24*7});jar.set('scout_refresh',session.refresh_token,{...cookieOptions,maxAge:60*60*24*30})}
 export async function clearSession(){const jar=await cookies();jar.set('scout_access','',{...cookieOptions,maxAge:0});jar.set('scout_refresh','',{...cookieOptions,maxAge:0})}

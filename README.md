@@ -64,7 +64,7 @@ select id from auth.users where lower(email)=lower('YOUR_EMAIL@example.com')
 on conflict(user_id) do nothing;
 ```
 
-Check that a row was inserted. Visit `/admin` using that account. New users never receive administrator access automatically. Only a database administrator can change the membership table.
+Check that a row was inserted. Visit `/admin` using that account. The dashboard has a left sidebar for Overview, Etsy integration, Workspace preferences, and Public contact. On phones, open the same sidebar with the navigation button. New users never receive administrator access automatically. Only a database administrator can change the membership table.
 
 ## 4. Deploy to Vercel
 
@@ -79,7 +79,7 @@ Deployment does not migrate records from the earlier Cloudflare database. This s
 
 ## 5. Activate Etsy
 
-Open `/admin`, enter the **approved** Etsy keystring and shared secret, save them, and click **Test connection**. They are encrypted with AES-256-GCM before database storage. The browser never receives stored credential values. Public listing searches use the official `x-api-key: keystring:shared_secret` header and do not request access to private shop orders.
+Open `/admin` → **Etsy integration**, enter the **approved** Etsy keystring and shared secret, save them, and click **Test saved connection**. The dashboard displays the last manual connection test, rather than continuous health monitoring. Credentials are encrypted with AES-256-GCM before database storage, and stored values never return to the browser. Public listing searches use the official `x-api-key: keystring:shared_secret` header and do not request access to private shop orders.
 
 After connection succeeds:
 
@@ -108,7 +108,7 @@ Tests cover verified identity, read-only workspace authentication and session re
 
 Production builds use two workers to keep memory usage manageable on local Windows machines.
 
-After deployment, verify: the homepage is publicly accessible and signed-out access to `/workspace` redirects to login; an ordinary user gets HTTP 403 at `/admin`; two users cannot see each other's watchlists; saved settings survive reloads; the Etsy connection test succeeds; and no secrets appear in browser responses.
+After deployment, verify: the homepage is publicly accessible and signed-out access to `/workspace` or `/admin` redirects to login; ordinary users see Access restricted at `/admin` and receive HTTP 403 from admin APIs; two users cannot see each other's watchlists; saved settings survive reloads; the Etsy connection test succeeds; and no secrets appear in browser responses.
 
 ## Troubleshooting
 
