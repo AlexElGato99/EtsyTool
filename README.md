@@ -52,7 +52,7 @@ The public homepage, `/about`, `/contact`, `/privacy`, and `/terms` are availabl
 
 In Supabase Authentication, enable email/password sign-in and allow new signups. Keep email confirmation enabled for public registrations. The signup screen explains when email confirmation is required, and authenticated sessions open `/workspace`.
 
-The owner can change the contact email and operator name in `/admin` ? **Public contact details**. These values are stored in the existing `app_settings` table and used on Contact, Privacy, Terms, and all public-page footers. The initial contact is `ayoub-k10@hotmail.com`, with `PNG Scout` as the operator name. No database migration is needed for this setting.
+The owner can change the contact email and operator name in `/admin` under **Public contact details**. These values are stored in the existing `app_settings` table and used on Contact, Privacy, and Terms. The initial contact is `ayoub-k10@hotmail.com`, with `PNG Scout` as the operator name. No database migration is needed for this setting.
 
 ## 3. Make yourself administrator
 
@@ -83,11 +83,16 @@ Open `/admin`, enter the **approved** Etsy keystring and shared secret, save the
 
 After connection succeeds:
 
-- Search listings with grid/list views, images, currencies, tags, favorites and creation-based age.
-- Page through results in batches of 24. Digital filtering and price/favorite sorting apply to the displayed page.
+- Explore the marketplace by keyword, or browse without a keyword. Filter by seller category, price range, shop location, shipping destination, currency and mature-content exclusion. Sort by relevance, price, creation or update date using Etsy's supported search parameters.
+- Find a shop by its exact name, numeric ID or Etsy URL. Browse its active or featured listings, filter active listings by keyword, and explore individual shop sections.
+- Look up a single listing or up to 100 listing IDs/Etsy URLs, separated by commas or whitespace.
+- Switch between grid/list views, view real Etsy images, prices, tags, favorites and creation-based age, and export displayed listings when enabled by the owner.
+- Page through marketplace/shop results in batches of 24, up to Etsy's 12,000 offset limit. Digital/physical filtering applies only to the displayed page; Etsy does not provide that global search filter.
 - Save up to 100 products per account. Refresh a saved listing to record that day's price/favorite snapshot; history retains 30 days. Refresh is manual, not a scheduled job.
 - Analyze a keyword and up to four related tags from the first result page. Competition is a heuristic based on matching API listing counts, not website ranking or demand.
-- Searches are cached for 15 minutes. Each user can issue 15 research requests per minute; Etsy's own quotas still apply.
+- Searches are cached for 15 minutes and categories for 24 hours. Each user can issue 15 research requests per minute; Etsy's own quotas still apply. Search thumbnails and shop metadata come from Etsy's documented batch listing endpoint.
+
+The React workspace keeps connection setup and credential diagnostics out of the user interface. Users receive concise retry, validation and no-results feedback; the owner's connection test retains the technical diagnostics in `/admin`. Authentication verifies identity before rendering the workspace, with a separate fixed session-refresh route for expired sessions.
 
 **Not supplied by Etsy API:** competitor exact sales, reliable sales estimates, and keyword search traffic. These stay unavailable. There is no fabricated fallback dataset. Sales estimation, keyword-volume providers, scheduled jobs, billing, password recovery UI and third-party scraper integrations are not included.
 
@@ -99,7 +104,9 @@ npm test
 npm run build
 ```
 
-Security tests cover verified identity, session refresh, administrator membership, encryption, cross-origin rejection and Etsy access/quota errors. A production build and mocked tests can run without real secrets; live login, Supabase SQL execution, RLS policies and Etsy connectivity require your provisioned accounts and credentials.
+Tests cover verified identity, read-only workspace authentication and session refresh, administrator membership, encryption, cross-origin rejection, Etsy search parameter validation, URL/ID validation, public error sanitization, cache isolation, currency conversion, image hydration and saved-listing metadata. A production build and mocked tests can run without real secrets; live login, Supabase SQL execution, RLS policies and Etsy connectivity require your provisioned accounts and credentials.
+
+Production builds use two workers to keep memory usage manageable on local Windows machines.
 
 After deployment, verify: the homepage is publicly accessible and signed-out access to `/workspace` redirects to login; an ordinary user gets HTTP 403 at `/admin`; two users cannot see each other's watchlists; saved settings survive reloads; the Etsy connection test succeeds; and no secrets appear in browser responses.
 
