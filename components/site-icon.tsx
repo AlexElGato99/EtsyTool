@@ -2,7 +2,9 @@
   PiCompassBold, PiArrowRightBold, PiMagnifyingGlassBold, PiTagBold,
   PiBookmarkSimpleBold, PiCheckBold, PiFileBold, PiLockKeyBold,
   PiClockCounterClockwiseBold, PiInfoBold, PiCaretDownBold,
-  PiEnvelopeSimpleBold, PiHeartBold,
+  PiEnvelopeSimpleBold, PiHeartBold, PiStorefrontBold, PiChartBarBold,
+  PiCalculatorBold, PiBrowserBold, PiPinterestLogoBold, PiBookOpenBold,
+  PiMegaphoneBold, PiFlaskBold, PiChatCircleTextBold, PiSquaresFourBold,
 } from 'react-icons/pi';
 
 const icons = {
@@ -11,6 +13,10 @@ const icons = {
   file: PiFileBold, lock: PiLockKeyBold, history: PiClockCounterClockwiseBold,
   info: PiInfoBold, chevron: PiCaretDownBold, email: PiEnvelopeSimpleBold,
   heart: PiHeartBold,
+  shop: PiStorefrontBold, chart: PiChartBarBold, calculator: PiCalculatorBold,
+  browser: PiBrowserBold, pinterest: PiPinterestLogoBold, book: PiBookOpenBold,
+  marketing: PiMegaphoneBold, experiment: PiFlaskBold, chat: PiChatCircleTextBold,
+  grid: PiSquaresFourBold,
 };
 export function SiteIcon({ name, className = 'icon' }: { name: keyof typeof icons; className?: string }) {
   const Icon = icons[name];

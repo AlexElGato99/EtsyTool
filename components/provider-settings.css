@@ -1,0 +1,43 @@
+.ps-settings { display: grid; gap: 22px; }
+.ps-intro { display: flex; align-items: flex-start; gap: 13px; padding: 18px 20px; color: #484bc0; border: 1px solid #dddffa; border-radius: 12px; background: #eef0ff; }
+.ps-intro > svg { margin-top: 3px; }
+.ps-intro strong { display: block; font-weight: 800; }
+.ps-intro p { margin-top: 3px; font-size: 12px; }
+.ps-provider-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; align-items: start; }
+.ps-settings .ad-card { min-width: 0; }
+.ps-card-top { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.ps-card-top > div { flex: 1; min-width: 140px; }
+.ps-card-top h2 { font-size: 17px; font-weight: 800; margin: 0 0 3px; }
+.ps-card-top p { font-size: 12px; }
+.ps-badge { border-radius: 20px; background: #f1f2f7; color: #66708a; padding: 4px 9px; font-size: 10px; font-weight: 800; white-space: nowrap; }
+.ps-badge.is-saved { color: #484bc0; background: #eeefff; }
+.ps-fields { border: 0; padding: 0; margin: 0; display: grid; gap: 18px; min-width: 0; }
+.ps-fields label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 750; color: #3e4865; }
+.ps-fields input, .ps-callback input { min-width: 0; width: 100%; border: 1px solid #dce0ed; border-radius: 7px; padding: 11px 12px; background: #fff; color: #26314c; font-size: 13px; line-height: 1.5; }
+.ps-fields input::placeholder { color: #737d93; opacity: 1; font-weight: 500; font-size: 11px; }
+.ps-fields input:disabled { background: #f6f7fb; }
+.ps-fields .ad-password-field { width: 100%; }
+.ps-fields .ad-field-help { font-weight: 500; }
+.ps-optional { font-weight: 500; color: #6c7490; }
+.ps-form-actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 22px 0 0; }
+.ps-callback { margin-top: 23px; }
+.ps-callback > label { display: block; margin-bottom: 7px; color: #46516c; font-size: 11px; font-weight: 800; }
+.ps-callback > div:not(.ad-feedback) { display: flex; gap: 8px; align-items: stretch; }
+.ps-callback input { font-size: 11px; background: #f7f8fc; font-weight: 600; }
+.ps-callback .ad-button { flex-shrink: 0; padding-inline: 10px; }
+.ps-settings .ps-help { margin: 12px 0 0; font-size: 11px; line-height: 1.7; }
+.ps-doc-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; color: #4c50c9; font-size: 11px; font-weight: 800; }
+.ps-doc-link:hover { text-decoration: underline; }
+.ps-doc-link svg { width: 15px; height: 15px; }
+.ps-links { display: flex; flex-wrap: wrap; gap: 0 18px; }
+.ps-email-note { display: flex; gap: 10px; margin-top: 24px; padding: 13px; background: #f6f7fc; border-radius: 8px; }
+.ps-email-note svg { width: 17px; height: 17px; color: #5459bc; margin-top: 2px; }
+.ps-email-note p { font-size: 11px; line-height: 1.7; }
+.ps-email-note a { color: #4b4fc4; text-decoration: underline; font-weight: 700; }
+.ps-removal { margin-top: 22px; border-top: 1px solid #e8eaf2; padding-top: 18px; }
+.ps-removal .ad-button { font-size: 11px; }
+.ps-remove-confirm { border: 1px solid #f0d6da; border-radius: 8px; padding: 13px; background: #fff8f9; }
+.ps-remove-confirm p { font-size: 11px; margin-bottom: 12px; }
+.ps-remove-confirm > div { display: flex; gap: 9px; flex-wrap: wrap; }
+@media (max-width: 1120px) { .ps-provider-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .ps-etsy .ps-card-top > .ad-button { width: 100%; justify-content: center; } .ps-form-actions > .ad-button { flex: 1; } .ps-badge { margin-left: 0; } .ps-intro { padding: 15px; } }

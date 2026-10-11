@@ -7,6 +7,7 @@ import ts from 'typescript';
 function load(path, imports, globals = {}) {
   const module = { exports: {} };
   const code = ts.transpile(fs.readFileSync(path, 'utf8'), {
+    target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.CommonJS,
     jsx: ts.JsxEmit.ReactJSX,
     esModuleInterop: true,
@@ -14,7 +15,7 @@ function load(path, imports, globals = {}) {
   vm.runInNewContext(code, {
     exports: module.exports,
     require: name => imports[name] || {},
-    Response, Request, URL,
+    Response, Request, URL, URLSearchParams,
     ...globals,
   });
   return module.exports;
@@ -34,13 +35,16 @@ function setup(initialCookies, responder) {
     'next/headers': headers,
     './supabase': { authFetch: async (path, options) => { calls.push([path, options]); return responder(path, options); } },
   }, globals);
+  const links = load('lib/workspace-link.ts', {});
   const route = load('app/workspace/session-refresh/route.ts', {
     'next/headers': headers,
     '../../../lib/auth': auth,
+    '../../../lib/workspace-link': links,
   }, globals);
   const component = () => null;
   const page = load('app/workspace/page.tsx', {
     '../../lib/auth': auth,
+    '../../lib/workspace-link': links,
     '../../components/workspace': { __esModule: true, default: component },
     'next/navigation': { redirect: location => { const error = new Error('Redirect'); error.location = location; throw error; } },
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },

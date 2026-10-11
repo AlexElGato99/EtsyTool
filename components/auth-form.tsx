@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { PiArrowRightBold, PiEyeBold, PiEyeSlashBold, PiShieldCheckBold } from 'react-icons/pi';
+import { safeWorkspaceDestination, workspaceAuthHref } from '../lib/workspace-link';
 
 type AuthFormProps = { mode: 'login' | 'signup' };
 
@@ -20,6 +21,11 @@ export default function AuthForm({ mode }: AuthFormProps) {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [confirmationRequired, setConfirmationRequired] = useState(false);
+  const [workspaceDestination, setWorkspaceDestination] = useState('/workspace');
+
+  useEffect(() => {
+    setWorkspaceDestination(safeWorkspaceDestination(new URLSearchParams(window.location.search).get('next')));
+  }, [mode]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,7 +74,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
       }
       setStatus('You’re signed in. Opening your workspace…');
       openingWorkspace = true;
-      window.location.assign('/workspace');
+      window.location.assign(safeWorkspaceDestination(new URLSearchParams(window.location.search).get('next')));
     } catch {
       openingWorkspace = false;
       setStatus('');
@@ -117,10 +123,10 @@ export default function AuthForm({ mode }: AuthFormProps) {
       </form>}
       {confirmationRequired && <>
         <p className="auth-status" role="status">{status}</p>
-        <Link className="button button-secondary" href="/login">Go to sign in <PiArrowRightBold aria-hidden="true" /></Link>
+        <Link className="button button-secondary" href={workspaceAuthHref('login', workspaceDestination)}>Go to sign in <PiArrowRightBold aria-hidden="true" /></Link>
       </>}
       <div className="auth-links">
-        <p>{isSignup ? 'Already have an account?' : 'New to PNG Scout?'} <Link href={isSignup ? '/login' : '/signup'}>{isSignup ? 'Sign in' : 'Create a free account'}</Link></p>
+        <p>{isSignup ? 'Already have an account?' : 'New to PNG Scout?'} <Link href={workspaceAuthHref(isSignup ? 'login' : 'signup', workspaceDestination)}>{isSignup ? 'Sign in' : 'Create a free account'}</Link></p>
         <Link href="/">Back to the homepage</Link>
       </div>
       {!isSignup && <p className="auth-legal">By using PNG Scout, you agree to our <Link href="/terms">Terms of Use</Link>. See how we handle data in our <Link href="/privacy">Privacy Policy</Link>.</p>}

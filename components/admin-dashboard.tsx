@@ -10,9 +10,10 @@ import {
   PiInfoBold, PiXBold, PiFloppyDiskBold,
 } from 'react-icons/pi';
 import { BrandMark } from './site-icon';
+import ProviderSettings from './provider-settings';
 import './admin-dashboard.css';
 
-type Tab = 'overview' | 'integration' | 'workspace' | 'contact';
+type Tab = 'overview' | 'integration' | 'workspace' | 'contact' | 'services';
 type AppSettings = { name: string; defaultView: 'grid' | 'list'; allowExport: boolean; showEstimates: boolean };
 type PublicContact = { email: string; operatorName: string };
 type Connection = { ok: boolean; checkedAt: string } | null;
@@ -23,12 +24,14 @@ const tabs = [
   { id: 'integration', title: 'Etsy integration', icon: PiPlugBold },
   { id: 'workspace', title: 'Workspace preferences', icon: PiSlidersHorizontalBold },
   { id: 'contact', title: 'Public contact', icon: PiEnvelopeSimpleBold },
+  { id: 'services', title: 'Connected services', icon: PiPlugBold },
 ] as const;
 const headings: Record<Tab, { title: string; description: string; kicker: string }> = {
   overview: { title: 'Your app, thoughtfully managed.', description: 'A clear view of your connection, workspace preferences, and public contact details.', kicker: 'OWNER OVERVIEW' },
   integration: { title: 'Connect your Etsy research.', description: 'Manage your saved credentials and verify access to Etsy’s public listing data.', kicker: 'ETSY INTEGRATION' },
   workspace: { title: 'Shape the research experience.', description: 'Choose how listings appear by default and whether users can export their results.', kicker: 'WORKSPACE PREFERENCES' },
   contact: { title: 'Make it easy to reach you.', description: 'Keep the contact details on your public and legal pages up to date.', kicker: 'PUBLIC CONTACT' },
+  services: { title: 'Connect the tools your users need.', description: 'Configure Etsy, Pinterest, and email services for optional account connections.', kicker: 'CONNECTED SERVICES' },
 };
 function checkedAt(value: string | undefined) {
   if (!value || !Number.isFinite(new Date(value).getTime())) return 'No connection test recorded';
@@ -236,6 +239,7 @@ export default function AdminDashboard({ email }: { email: string }) {
                 <button onClick={() => selectTab('integration')}><PiKeyBold /><div><strong>Etsy credentials</strong><span>Save or replace keys and test access.</span></div><PiArrowRightBold /></button>
                 <button onClick={() => selectTab('workspace')}><PiSlidersHorizontalBold /><div><strong>Workspace preferences</strong><span>Set the default layout and export visibility.</span></div><PiArrowRightBold /></button>
                 <button onClick={() => selectTab('contact')}><PiEnvelopeSimpleBold /><div><strong>Public contact details</strong><span>Update your contact email and operator name.</span></div><PiArrowRightBold /></button>
+                <button onClick={() => selectTab('services')}><PiPlugBold /><div><strong>Connected services</strong><span>Configure Pinterest and a Resend email sender.</span></div><PiArrowRightBold /></button>
               </div></section><section className="ad-card"><div className="ad-card-heading"><h2>Connection checklist</h2><p>Keep listing research ready for your users.</p></div><div className="ad-checklist">
                 <div>{credentialsSaved ? <PiCheckCircleBold /> : <PiKeyBold />}<div><strong>{credentialsSaved ? 'Credentials are saved' : 'Add your Etsy credentials'}</strong><span>Both the API key and shared secret are required.</span></div></div>
                 <div>{connection?.ok && credentialsSaved ? <PiCheckCircleBold /> : <PiClockBold />}<div><strong>{connection?.ok && credentialsSaved ? 'Last test passed' : 'Verify API access'}</strong><span>{connection ? checkedAt(connection.checkedAt) : 'Run a test after saving credentials.'}</span></div></div>
@@ -254,6 +258,8 @@ export default function AdminDashboard({ email }: { email: string }) {
               </section><aside className="ad-card ad-integration-help"><div className="ad-panel-heading"><span className="ad-section-icon"><PiShieldCheckBold /></span><div><h2>Protected by design</h2><p>Keep your integration private.</p></div></div><ul className="ad-security-list"><li><PiLockKeyBold /><span>Credentials are encrypted before storage.</span></li><li><PiShieldCheckBold /><span>Stored keys are never returned to the browser.</span></li><li><PiPlugBold /><span>Etsy requests run through the server.</span></li></ul><div className="ad-note"><PiInfoBold /><p>Use credentials from an approved Etsy application. Approval and access are managed through Etsy.</p></div><a className="ad-button ad-secondary" href="https://www.etsy.com/developers/your-apps" target="_blank" rel="noopener noreferrer">Etsy Developer Portal<PiArrowSquareOutBold /></a></aside></div>
               {credentialsSaved && <section className="ad-danger-zone"><div><h3>Remove saved credentials</h3><p>This disables new Etsy research for all users until you add credentials again.</p></div><button className="ad-button ad-danger" disabled={!!integrationBusy} onClick={() => setConfirmRemove(true)}><PiTrashBold />Remove credentials</button></section>}
             </>}
+
+            {tab === 'services' && <ProviderSettings onEtsySettings={() => selectTab('integration')} />}
 
             {tab === 'workspace' && <section className="ad-card"><div className="ad-panel-heading"><span className="ad-section-icon"><PiSlidersHorizontalBold /></span><div><h2>Workspace preferences</h2><p>Manage the defaults for your research tools.</p></div></div><form className="ad-form" onSubmit={saveApp}>
               <fieldset className="ad-view-fieldset" disabled={appSaving}><legend>Default listing view</legend><p className="ad-field-help">A user’s previously selected layout takes priority over this default.</p><div className="ad-view-options">

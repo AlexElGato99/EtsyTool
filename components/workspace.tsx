@@ -7,12 +7,17 @@ import {
   PiSquaresFourBold, PiListBold, PiDownloadSimpleBold, PiArrowLeftBold,
   PiArrowRightBold, PiHeartBold, PiClockBold, PiStorefrontBold, PiLinkBold,
   PiXBold, PiArrowClockwiseBold, PiCopyBold, PiCaretDownBold,
-  PiFileImageBold, PiEnvelopeSimpleBold,
+  PiFileImageBold, PiEnvelopeSimpleBold, PiPlugBold, PiToolboxBold,
 } from 'react-icons/pi';
 import { BrandMark } from './site-icon';
+import { AccountConnections } from './account-connections';
+import { EmailCampaigns } from './email-campaigns';
+import { FreeTool } from './free-tools';
+import { freeTools, type ToolSlug } from '../lib/free-tools';
+import { SiteIcon } from './site-icon';
 import './workspace.css';
 
-type Section = 'listings' | 'keywords' | 'saved';
+type Section = 'listings' | 'keywords' | 'saved' | 'tools' | 'connections' | 'campaigns';
 type Mode = 'marketplace' | 'shop' | 'listing';
 type Product = {
   id: string; title: string; price: number; currency: string; age: number;
@@ -36,7 +41,7 @@ const initialFilters: Filters = {
   buyer_country: '', sort_on: 'score', sort_order: 'down', is_safe: true,
 };
 const methodLabels = { marketplace: 'Marketplace', shop: 'Shop search', listing: 'Listing lookup' };
-const sectionLabels = { listings: 'Listing explorer', keywords: 'Keyword research', saved: 'Saved listings' };
+const sectionLabels = { listings: 'Listing explorer', keywords: 'Keyword research', saved: 'Saved listings', tools: 'Creator tools', connections: 'Connected accounts', campaigns: 'Email campaigns' };
 const number = (value: number) => value.toLocaleString();
 function price(product: { price: number; currency: string }) {
   try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: product.currency }).format(product.price); }
@@ -69,6 +74,7 @@ function ProductImage({ product }: { product: Product }) {
 
 export default function Workspace({ email }: { email: string }) {
   const [section, setSection] = useState<Section>('listings');
+  const [activeTool, setActiveTool] = useState<ToolSlug | null>(null);
   const [mode, setMode] = useState<Mode>('marketplace');
   const [queries, setQueries] = useState<Record<Mode, string>>({ marketplace: '', shop: '', listing: '' });
   const [filters, setFilters] = useState<Filters>(initialFilters);
@@ -122,6 +128,16 @@ export default function Workspace({ email }: { email: string }) {
     finally { setSavedLoading(false); }
   }
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const requestedSection = params.get('section');
+    if (requestedSection && ['listings','keywords','saved','tools','connections','campaigns'].includes(requestedSection)) setSection(requestedSection as Section);
+    if (params.has('connection')) setSection('connections');
+    const requestedMode = params.get('mode');
+    if (requestedMode && ['marketplace','shop','listing'].includes(requestedMode)) {
+      setMode(requestedMode as Mode);
+      const requestedQuery = (params.get('q') || '').slice(0, requestedMode === 'listing' ? 8000 : requestedMode === 'shop' ? 1000 : 100);
+      setQueries(current => ({...current,[requestedMode]:requestedQuery}));
+    }
     void loadSaved();
     let storedView: string | null = null;
     try { storedView = localStorage.getItem('png-scout-view'); if (storedView === 'list' || storedView === 'grid') setView(storedView); } catch {}
@@ -154,7 +170,7 @@ export default function Workspace({ email }: { email: string }) {
     return () => { current = false; };
   }, [selected?.id, saved.map(item => item.id).join(',')]);
 
-  function changeSection(next: Section) { setSection(next); setActionMessage(''); }
+  function changeSection(next: Section) { setSection(next); setActionMessage(''); const url = new URL(window.location.href); url.searchParams.set('section',next); url.searchParams.delete('connection'); url.searchParams.delete('result'); window.history.replaceState(null,'',url.pathname + url.search); }
   function changeView(next: 'grid' | 'list') { setView(next); try { localStorage.setItem('png-scout-view', next); } catch {} }
   async function search(params: URLSearchParams, start = 0) {
     const request = ++searchNumber.current;
@@ -273,9 +289,12 @@ export default function Workspace({ email }: { email: string }) {
         <button aria-current={section === 'listings' ? 'page' : undefined} onClick={() => changeSection('listings')}><PiMagnifyingGlassBold />Listing explorer</button>
         <button aria-current={section === 'keywords' ? 'page' : undefined} onClick={() => changeSection('keywords')}><PiTagBold />Keyword research</button>
         <button aria-current={section === 'saved' ? 'page' : undefined} onClick={() => changeSection('saved')}><PiBookmarkSimpleBold />Saved listings{!savedLoading && !savedError && <span className="ws-nav-count">{saved.length}</span>}</button>
+        <button aria-current={section === 'tools' ? 'page' : undefined} onClick={() => changeSection('tools')}><PiToolboxBold />Creator tools</button>
+        <button aria-current={section === 'campaigns' ? 'page' : undefined} onClick={() => changeSection('campaigns')}><PiEnvelopeSimpleBold />Email campaigns</button>
+        <button aria-current={section === 'connections' ? 'page' : undefined} onClick={() => changeSection('connections')}><PiPlugBold />Connected accounts</button>
       </nav>
       <div className="ws-sidebar-bottom">
-        <nav className="ws-secondary-nav" aria-label="Website links"><a href="/" aria-label="Home"><PiHouseBold />Home</a><a href="/contact"><PiEnvelopeSimpleBold />Contact &amp; help</a></nav>
+        <nav className="ws-secondary-nav" aria-label="Website links"><a href="/" aria-label="Home"><PiHouseBold />Home</a><a href="/help"><PiEnvelopeSimpleBold />Help center</a></nav>
         <div className="ws-profile"><span className="ws-avatar" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span><div><strong>Your account</strong><span title={email}>{email}</span></div></div>
         <button className="ws-signout" onClick={() => void signOut()} disabled={signingOut}><PiSignOutBold />{signingOut ? 'Signing out…' : 'Sign out'}</button>
       </div>
@@ -283,12 +302,15 @@ export default function Workspace({ email }: { email: string }) {
     <div className="ws-body">
       <header className="ws-topbar"><div><span>Workspace</span><PiCaretDownBold className="ws-breadcrumb-arrow" /><strong>{sectionLabels[section]}</strong></div><a href="/about">About PNG Scout <PiArrowSquareOutBold /></a></header>
       <main id="workspace-main" className="ws-main">
-        <div className="ws-heading"><span className="ws-kicker">{section === 'saved' ? 'YOUR COLLECTION' : section === 'keywords' ? 'DISCOVER THE CONTEXT' : 'EXPLORE THE MARKETPLACE'}</span>
-          <h1>{section === 'saved' ? 'Good ideas, kept together.' : section === 'keywords' ? 'Find the words behind the idea.' : 'Your next idea starts here.'}</h1>
-          <p>{section === 'saved' ? 'Keep your favorite listings in one place. Revisit details and track price and favorite changes.' : section === 'keywords' ? 'Explore related tags and compare the listing competition around a keyword.' : 'Search Etsy listings, explore a shop, or take a closer look at a product.'}</p>
+        <div className="ws-heading"><span className="ws-kicker">{section === 'campaigns' ? 'YOUR EMAIL CAMPAIGNS' : section === 'connections' ? 'YOUR CONNECTED SERVICES' : section === 'tools' ? 'YOUR FREE CREATOR TOOLKIT' : section === 'saved' ? 'YOUR COLLECTION' : section === 'keywords' ? 'DISCOVER THE CONTEXT' : 'EXPLORE THE MARKETPLACE'}</span>
+          <h1>{section === 'campaigns' ? 'Keep your subscribers in the loop.' : section === 'connections' ? 'Bring your accounts together.' : section === 'tools' ? 'Make your next step concrete.' : section === 'saved' ? 'Good ideas, kept together.' : section === 'keywords' ? 'Find the words behind the idea.' : 'Your next idea starts here.'}</h1>
+          <p>{section === 'campaigns' ? 'Connect your own free Resend account, build your list, and send a thoughtful shop update.' : section === 'connections' ? 'Connect your own accounts and choose the actions you want to use.' : section === 'tools' ? 'Check a listing, understand your fees, and prepare your next message.' : section === 'saved' ? 'Keep your favorite listings in one place. Revisit details and track price and favorite changes.' : section === 'keywords' ? 'Explore related tags and compare the listing competition around a keyword.' : 'Search Etsy listings, explore a shop, or take a closer look at a product.'}</p>
         </div>
+        {section === 'connections' && <AccountConnections />}
+        {section === 'campaigns' && <EmailCampaigns />}
+        {section === 'tools' && <div className="ws-tools">{activeTool ? <><button className="ws-button ws-secondary ws-tools-back" onClick={() => setActiveTool(null)}><PiArrowLeftBold />All creator tools</button><h2>{freeTools.find(tool => tool.slug === activeTool)?.title}</h2><FreeTool slug={activeTool} /></> : <div className="ws-tools-grid">{freeTools.map(tool => <button className="ws-tool-card" key={tool.slug} onClick={() => setActiveTool(tool.slug)}><span><SiteIcon name={tool.icon} /></span><h2>{tool.title}</h2><p>{tool.description}</p><strong>Open free tool <PiArrowRightBold /></strong></button>)}</div>}</div>}
         {actionMessage && <p className="ws-feedback" role="status">{actionMessage}</p>}
-        {savedError && section !== 'keywords' && <div className="ws-feedback" role="status">Your saved collection could not be loaded. <button onClick={() => void loadSaved()}>Try again</button></div>}
+        {savedError && (section === 'listings' || section === 'saved') && <div className="ws-feedback" role="status">Your saved collection could not be loaded. <button onClick={() => void loadSaved()}>Try again</button></div>}
 
         {section === 'listings' && <>
           <section className="ws-search-panel" aria-label="Search Etsy listings">
@@ -331,7 +353,7 @@ export default function Workspace({ email }: { email: string }) {
           {searchError && <div className="ws-feedback ws-feedback-error" role="alert">{searchError}{results && <span>Your previous results are still shown below.</span>}</div>}
         </>}
 
-        {section !== 'keywords' && <section className="ws-results" aria-label={section === 'saved' ? 'Saved listings' : 'Search results'}>
+        {(section === 'listings' || section === 'saved') && <section className="ws-results" aria-label={section === 'saved' ? 'Saved listings' : 'Search results'}>
           <div className="ws-results-header"><div><h2>{section === 'saved' ? 'Your saved listings' : results ? 'Search results' : 'Find something worth exploring'}</h2>
             {section === 'saved' ? <p>{savedLoading ? 'Loading your collection…' : `${number(saved.length)} of 100 listings saved`}</p> : results && <p>{number(results.count)} matching listings{results.shop ? ` · ${results.shop.name}` : ` · ${resultQuery.length > 70 ? 'Listing lookup' : resultQuery}`}<span className="ws-results-date"> · Updated {date(results.capturedAt)}</span></p>}
           </div>{(results || section === 'saved') && <div className="ws-result-actions">
