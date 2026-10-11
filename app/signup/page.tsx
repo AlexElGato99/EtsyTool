@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { PiCheckCircleBold, PiLockKeyBold, PiSparkleBold } from 'react-icons/pi';
 import AuthForm from '../../components/auth-form';
 import { SiteHeader, SiteFooter } from '../../components/site-shell';
+import { BrandMark } from '../../components/site-icon';
 
 export const metadata: Metadata = {
   title: 'Create a free account · PNG Scout',
@@ -16,6 +17,7 @@ export default function SignupPage() {
     <main id="main" className="auth-page" tabIndex={-1}>
       <div className="container auth-layout">
         <section className="auth-intro">
+          <a className="brand auth-brand" href="/" aria-label="PNG Scout home"><BrandMark /></a>
           <span className="eyebrow">Free for curious creators</span>
           <h1>Make room for your next idea.</h1>
           <p>Create your free account and give your product research a place to grow. PNG Scout is a noncommercial project, built to make research easier.</p>
