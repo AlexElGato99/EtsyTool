@@ -44,7 +44,15 @@ Keep this key stable and backed up. Changing it prevents decrypting stored Etsy 
 npm run dev
 ```
 
-Visit http://localhost:3000/login. Accounts can be created there; if confirmation is enabled, confirm the email and then sign in. Passwords are sent only to the server and Supabase Auth. Session tokens are held in HttpOnly, SameSite cookies, with Secure cookies in production. Tokens are verified through Supabase before accepting identity; refresh tokens renew expired sessions.
+Visit http://localhost:3000 for the public homepage, or http://localhost:3000/login to sign in. The protected research workspace is at `/workspace`. Free accounts can be created at `/signup`; if confirmation is enabled, confirm the email and then sign in. Passwords are sent only to the server and Supabase Auth. Session tokens are held in HttpOnly, SameSite cookies, with Secure cookies in production. Tokens are verified through Supabase before accepting identity; refresh tokens renew expired sessions.
+
+## Public pages and free accounts
+
+The public homepage, `/about`, `/contact`, `/privacy`, and `/terms` are available without signing in. `/signup` creates free accounts and `/login` signs existing users in. There are no paid plans, checkout, or billing features. All available tools are free; Etsy API availability and usage limits still apply.
+
+In Supabase Authentication, enable email/password sign-in and allow new signups. Keep email confirmation enabled for public registrations. The signup screen explains when email confirmation is required, and authenticated sessions open `/workspace`.
+
+The owner can change the contact email and operator name in `/admin` ? **Public contact details**. These values are stored in the existing `app_settings` table and used on Contact, Privacy, Terms, and all public-page footers. The initial contact is `ayoub-k10@hotmail.com`, with `PNG Scout` as the operator name. No database migration is needed for this setting.
 
 ## 3. Make yourself administrator
 
@@ -93,7 +101,7 @@ npm run build
 
 Security tests cover verified identity, session refresh, administrator membership, encryption, cross-origin rejection and Etsy access/quota errors. A production build and mocked tests can run without real secrets; live login, Supabase SQL execution, RLS policies and Etsy connectivity require your provisioned accounts and credentials.
 
-After deployment, verify: signed-out access redirects to login; an ordinary user gets HTTP 403 at `/admin`; two users cannot see each other's watchlists; saved settings survive reloads; the Etsy connection test succeeds; and no secrets appear in browser responses.
+After deployment, verify: the homepage is publicly accessible and signed-out access to `/workspace` redirects to login; an ordinary user gets HTTP 403 at `/admin`; two users cannot see each other's watchlists; saved settings survive reloads; the Etsy connection test succeeds; and no secrets appear in browser responses.
 
 ## Troubleshooting
 
