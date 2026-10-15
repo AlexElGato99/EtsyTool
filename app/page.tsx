@@ -23,7 +23,6 @@ export default function HomePage() {
         <h1>Your original work.<br /><span>Clearly prepared.</span></h1>
         <p>Prepare your own listing copy, understand your costs, and keep the next step organized. Practical tools built around information you enter.</p>
         <div className="mk-actions"><a className="button" href="/tools/listing-helper">Prepare a listing<SiteIcon name="arrow" /></a><a className="button button-secondary" href="/tools">Explore the tools<SiteIcon name="browser" /></a></div>
-        <div className="mk-hero-checks"><span><SiteIcon name="check" />Every available tool is free</span><span><SiteIcon name="check" />No payment details</span></div>
       </div>
       <HeroWorkspace />
     </div></section>

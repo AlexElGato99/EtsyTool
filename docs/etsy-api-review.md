@@ -4,7 +4,7 @@ Prepared October 15, 2026. Repository documentation only; not a public route, an
 
 ## Scope and identity
 
-The existing submitted application name is `png-scout`; the current public name is `podadd`. The previous purpose was marketplace/product research. The user selected a change to **seller-owned listing preparation and manual shop tools**, for the same application. The legal operator name supplied by the user is **AYOUB CHIBANE**. The support email is `ayoub-k10@hotmail.com`. Both remain editable in the owner dashboard. No company registration, legal address, or organization type has been asserted.
+The existing submitted application name is `png-scout`; the current public name is `podadd`. The previous purpose was marketplace/product research. The user selected a change to **seller-owned listing preparation and manual shop tools**, for the same application. The legal operator name supplied by the user is **AYOUB CHIBANE**. The support email is `elgatoa82@gmail.com`. Both remain editable in the owner dashboard. No company registration, legal address, or organization type has been asserted.
 
 Supported work: manually entered listing drafts, local text/tag checks, entered fee/profit assumptions, name suggestions, privacy/email drafts, and local task reminders. Future approved access provides a read-only view of the connected seller's own active and draft listings: title, description, tags, and price for manual review while preparing independent drafts and editing notes. Retrieved catalogue content is separate from manually entered drafts; podadd does not publish edits to Etsy.
 
@@ -24,7 +24,7 @@ In §5, marketing connections and order notifications are restricted; extension/
 
 ## Public pages for review
 
-Keep Home (`/`), About (`/about`), Contact (`/contact`), Terms (`/terms`), and Privacy (`/privacy`), with working public tools and account access. Home/About explain the actual purpose and operator; Contact displays a monitored support address. Terms/Privacy describe the user agreement, developer responsibilities, data use and controls; the account flow records explicit acceptance. A prominent Etsy independence notice remains in the shared footer. Old optional documentation, guide, feature-promotion and review-explanation URLs redirect to these retained pages or the tools.
+Keep Home (`/`), About (`/about`), Contact (`/contact`), Terms (`/terms`), and Privacy (`/privacy`), with working public tools and account access. Home/About explain the actual purpose and operator; Contact displays a monitored support address. Terms/Privacy describe the user agreement, developer responsibilities, data use and controls; the account flow records explicit acceptance. The exact Etsy independence notice is displayed in About's independent-service section and beside the workspace shop connection; Section 1 requires prominent display within the application without specifying the footer. Old optional documentation, guide, feature-promotion and review-explanation URLs redirect to these retained pages or the tools.
 
 Sections 1, 3 and 4 require the underlying disclosures and behavior, not this exact page count or these names. A separate public API documentation, application-purpose, or Etsy-disclaimer page is unnecessary. Do not copy Etsy's API Terms into podadd's Terms. These private notes are not published as a review page.
 
@@ -42,7 +42,7 @@ Sections 1, 3 and 4 require the underlying disclosures and behavior, not this ex
 | Stored Etsy data (§4/§5/§6) | Explicit owner purge covers legacy cache/history/watchlist and Etsy authorization state, not manually entered drafts. | Perform reviewed cleanup on the actual deployment; source updates alone do not delete cloud data. |
 | Browser table access (§4) | Upgrade SQL closes legacy authenticated watchlist reads. | Apply `supabase/etsy-review-migration.sql` and test Supabase Data API permissions on the real project. |
 | Enforceable acceptance (§3) | Server validates current-version signup acceptance; existing users reaccept through `/api/terms`. Timestamp/version records are stored per account. | Ensure legal/operator details are accurate; technical receipts do not establish universal legal enforceability. |
-| Operator/support (§3) | Dynamic public contact uses supplied legal operator name `AYOUB CHIBANE` and support email `ayoub-k10@hotmail.com`. Old product-name defaults normalize to the supplied legal name; custom operator settings stay editable. | Actually monitor the chosen inbox and supply any additional identity information Etsy requests. |
+| Operator/support (§3) | Dynamic public contact uses supplied legal operator name `AYOUB CHIBANE` and support email `elgatoa82@gmail.com`. Old product-name defaults normalize to the supplied legal name; custom operator settings stay editable. | Actually monitor the chosen inbox and supply any additional identity information Etsy requests. |
 | Warranty allocation (§3) | Terms use original wording identifying the operator as provider and excluding Etsy as app provider/warrantor. | Review applicable local requirements before publication. |
 | Privacy (§4) | Public policy describes encrypted manual drafts, acceptance records, grant state, temporary own catalogue and deletion choices. | Confirm hosting regions/retention in the deployed services and process verified privacy requests. |
 | Content rights/brand (§1/§5) | Original podadd branding; own/manual content controls; independent-service notice. No copied assets or approval claims. | Remove retired feature promotion and verify all live routes/downloads match the new scope. |
@@ -83,7 +83,7 @@ Review URL: [LIVE_HTTPS_URL]
 Purpose/operator: [LIVE_HTTPS_URL]/about
 Support: [LIVE_HTTPS_URL]/contact
 Application terms and privacy: [LIVE_HTTPS_URL]/terms and [LIVE_HTTPS_URL]/privacy
-Operator/contact: AYOUB CHIBANE / ayoub-k10@hotmail.com
+Operator/contact: AYOUB CHIBANE / elgatoa82@gmail.com
 Current application identifier: [EXISTING_APPLICATION_IDENTIFIER]
 Initial API audience: the operator's podadd account only, after approval and valid seller authorization.
 Future API audience: other consenting sellers, only after authorization appropriate to the intended scale.

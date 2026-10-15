@@ -25,6 +25,6 @@ export function SiteFooter() {
         <ul><li><a href="/privacy">Privacy policy</a></li><li><a href="/terms">Terms of use</a></li></ul>
       </nav>
     </div>
-    <div className="footer-bottom"><span>© {new Date().getFullYear()} podadd.</span><p>The term &apos;Etsy&apos; is a trademark of Etsy, Inc. This Application uses Etsy&apos;s API, but is not endorsed or certified by Etsy.</p></div>
+    <div className="footer-bottom"><span>© {new Date().getFullYear()} podadd.</span><p>Practical tools for independent sellers.</p></div>
   </div></footer>;
 }

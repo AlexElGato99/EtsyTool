@@ -35,7 +35,8 @@ export default async function AboutPage() {
         <p>For support or privacy requests, email <a href={'mailto:' + email}>{email}</a> or visit <Link href="/contact">Contact</Link>. Our <Link href="/terms">Terms of Use</Link> explain the service and the operator&apos;s responsibilities.</p>
       </section>
       <section id="independence"><h2>An independent service</h2>
-        <p>podadd is independently developed and operated. Etsy does not provide, endorse, or certify podadd. Etsy access and approval are determined by Etsy.</p>
+        <p>podadd is independently developed and operated. Etsy access and approval are determined by Etsy.</p>
+        <p>The term &apos;Etsy&apos; is a trademark of Etsy, Inc. This Application uses Etsy&apos;s API, but is not endorsed or certified by Etsy.</p>
         <p>You remain responsible for the accuracy of your listings and the rights to your products, designs, and text. Our tools help with preparation and do not promise rankings, sales, or legal compliance.</p>
       </section>
     </article>

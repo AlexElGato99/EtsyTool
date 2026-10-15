@@ -55,13 +55,13 @@ on conflict(user_id) do nothing;
 
 Verify that membership exists. Users never become owners automatically.
 
-The admin sidebar contains Overview, Etsy integration, Workspace details, Public contact, and **Etsy review & data**. Public contact email and operator name remain editable. The supplied legal operator name is **AYOUB CHIBANE**, and the initial support email is `ayoub-k10@hotmail.com`; this does not imply a company registration or address. Old product-name operator defaults display the supplied legal name; custom legal names remain unchanged.
+The admin sidebar contains Overview, Etsy integration, Workspace details, Public contact, and **Etsy review & data**. Public contact email and operator name remain editable. The supplied legal operator name is **AYOUB CHIBANE**, and the initial support email is `elgatoa82@gmail.com`; this does not imply a company registration or address. Old product-name operator defaults display the supplied legal name; custom legal names remain unchanged.
 
 ## Current scope
 
 The public site explains the supported listing workflow and provides free manual tools: title/tag preparation, fee and profit planning, shop-name suggestions, privacy and email drafts, and local task reminders. Calculators use entered assumptions. Privacy drafts require review. Browser email drafting does not send a message.
 
-Keep the public site focused: Home explains the purpose, About identifies the operator and supported work, Contact provides support, and Terms and Privacy describe the agreement and data handling. The public tools remain usable, and signup/login lead to the working private workspace. Optional technical documentation, marketing, and review-explanation pages are not necessary for an Etsy application; old URLs redirect to the retained pages. The Etsy independence notice remains visible in the footer and the service responsibilities are stated in Terms.
+Keep the public site focused: Home explains the purpose, About identifies the operator and supported work, Contact provides support, and Terms and Privacy describe the agreement and data handling. The public tools remain usable, and signup/login lead to the working private workspace. Optional technical documentation, marketing, and review-explanation pages are not necessary for an Etsy application; old URLs redirect to the retained pages. The Etsy independence notice remains visible in About and beside the workspace shop connection; the service responsibilities are stated in Terms.
 
 Etsy requires the relevant disclosures, support, enforceable user acceptance, and compliant functionality; it does not prescribe a particular number of public pages. Do not copy Etsy's API Terms into a new podadd policy or present these pages as proof of approval. See [Etsy API Terms, sections 1, 3 and 4](https://www.etsy.com/legal/api/).
 

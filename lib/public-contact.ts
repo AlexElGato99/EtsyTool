@@ -4,7 +4,7 @@ import { readSetting } from './settings';
 export type PublicContact = { email: string; operatorName: string };
 
 export const defaultPublicContact: PublicContact = {
-  email: 'ayoub-k10@hotmail.com',
+  email: 'elgatoa82@gmail.com',
   operatorName: 'AYOUB CHIBANE',
 };
 

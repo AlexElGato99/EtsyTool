@@ -63,11 +63,11 @@ test('Public contact reads only the allowlisted public setting and falls back sa
   assert.equal((await helper.getPublicContact()).operatorName, 'Custom Operator Ltd');
   stored = { email: 'you@example.com?bcc=other@example.com', operatorName: 'podadd' };
   result = await helper.getPublicContact();
-  assert.equal(result.email, 'ayoub-k10@hotmail.com');
+  assert.equal(result.email, 'elgatoa82@gmail.com');
   assert.equal(result.operatorName, 'AYOUB CHIBANE');
   assert(reads.every(key => key === 'publicContact'));
   const unavailable = contactHelper(async () => { throw Error('Database unavailable'); });
-  assert.equal((await unavailable.getPublicContact()).email, 'ayoub-k10@hotmail.com');
+  assert.equal((await unavailable.getPublicContact()).email, 'elgatoa82@gmail.com');
   assert.equal((await unavailable.getPublicContact()).operatorName, 'AYOUB CHIBANE');
 });
 
@@ -125,7 +125,7 @@ test('Admin settings return contact details and credential status without integr
   const response = await route.GET();
   assert.equal(response.status, 200);
   const result = await response.json();
-  assert.equal(result.publicContact.email, 'ayoub-k10@hotmail.com');
+  assert.equal(result.publicContact.email, 'elgatoa82@gmail.com');
   assert.equal(result.publicContact.operatorName, 'AYOUB CHIBANE');
   assert.equal(result.credentialsSaved, true);
   assert(!JSON.stringify(result).includes('integration-secret'));
