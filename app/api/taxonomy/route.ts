@@ -1,10 +1,4 @@
-import { researchAccess, errorResponse } from '../../../lib/api';
-import { cachedTaxonomy } from '../../../lib/etsy';
-import { json } from '../../../lib/admin';
-
+﻿import { json } from '../../../lib/admin';
 export const dynamic = 'force-dynamic';
-
-export async function GET() {
-  try { await researchAccess(); return json(await cachedTaxonomy()); }
-  catch (error) { return errorResponse(error); }
-}
+export async function GET() { return json({ error: 'This research feature has been retired. Use the manual listing-preparation workspace.', code: 'FEATURE_RETIRED' }, 410); }
+export async function POST() { return GET(); }

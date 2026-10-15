@@ -1,8 +1,4 @@
-import { db } from '../../../lib/supabase';
-import { userAccess,researchAccess,errorResponse,parseBody } from '../../../lib/api';
-import { etsy,normalizeListing,snapshot,ApiError } from '../../../lib/etsy';
-import { json,sameOrigin } from '../../../lib/admin';
-import { positiveId } from '../../../lib/search-options';
-export const dynamic='force-dynamic';
-export async function GET(){try{const u=await userAccess();const rows=await db<{payload:any}[]>('watchlist',{params:{user_id:'eq.'+u.userId,select:'payload',order:'created_at.desc'}});return json({products:rows.map(r=>r.payload)})}catch(e){return errorResponse(e)}}
-export async function POST(request:Request){try{const u=await researchAccess();if(!sameOrigin(request))throw new ApiError(403,'Invalid request origin');const body=await parseBody(request);const id=positiveId(String(body.id),'listing ID');const params={user_id:'eq.'+u.userId,listing_id:'eq.'+id};if(body.action==='remove'){await db('watchlist',{method:'DELETE',params,prefer:'return=minimal'});return json({saved:false})}if(!['save','refresh'].includes(String(body.action)))throw new ApiError(400,'Invalid action');const existing=await db<any[]>('watchlist',{params:{...params,select:'listing_id'}});if(body.action==='refresh'&&!existing.length)throw new ApiError(404,'Listing is not saved');const ids=await db<any[]>('watchlist',{params:{user_id:'eq.'+u.userId,select:'listing_id',limit:'100'}});if(!existing.length&&ids.length>=100)throw new ApiError(400,'Watchlist limit is 100 products');const product=normalizeListing(await etsy('listings/'+id,{includes:'Images,Shop'}));await db('watchlist',{method:'POST',params:{on_conflict:'user_id,listing_id'},body:{user_id:u.userId,listing_id:product.id,payload:product},prefer:'resolution=merge-duplicates,return=minimal'});await snapshot(product);return json({saved:true,product})}catch(e){return errorResponse(e)}}
+﻿import { json } from '../../../lib/admin';
+export const dynamic = 'force-dynamic';
+export async function GET() { return json({ error: 'This research feature has been retired. Use the manual listing-preparation workspace.', code: 'FEATURE_RETIRED' }, 410); }
+export async function POST() { return GET(); }

@@ -5,7 +5,7 @@ export type PublicContact = { email: string; operatorName: string };
 
 export const defaultPublicContact: PublicContact = {
   email: 'ayoub-k10@hotmail.com',
-  operatorName: 'PNG Scout',
+  operatorName: 'AYOUB CHIBANE',
 };
 
 // Keep the address safe to place directly in a mailto link. No URL parameters,
@@ -24,7 +24,12 @@ export function validatePublicContact(value: unknown): PublicContact | null {
 
 export async function getPublicContact(): Promise<PublicContact> {
   try {
-    return validatePublicContact(await readSetting('publicContact')) || { ...defaultPublicContact };
+    const contact = validatePublicContact(await readSetting('publicContact'));
+    if (!contact) return { ...defaultPublicContact };
+    // Earlier releases saved the product name as the default operator. Replace
+    // only those legacy defaults; an explicitly configured legal name stays editable.
+    const legacyDefault = ['png scout', 'png-scout', 'podadd'].includes(contact.operatorName.toLowerCase());
+    return { ...contact, operatorName: legacyDefault ? defaultPublicContact.operatorName : contact.operatorName };
   } catch {
     // Public informational pages also work before the database is configured.
     return { ...defaultPublicContact };

@@ -1,18 +1,15 @@
 import { userAccess, researchAccess, errorResponse, parseBody } from '../../../../lib/api';
 import { json, sameOrigin } from '../../../../lib/admin';
 import { ApiError } from '../../../../lib/etsy';
-import { connectionProvider, connectionStatus, beginConnection, disconnectConnection, connectedShop, connectedListing, pinterestBoards } from '../../../../lib/connections';
+import { connectionProvider, connectionStatus, beginConnection, disconnectConnection } from '../../../../lib/connections';
 export const dynamic = 'force-dynamic';
 type Context = { params: Promise<{ provider: string }> };
 export async function GET(request: Request, context: Context) {
   try {
     const provider = connectionProvider((await context.params).provider);
     const view = new URL(request.url).searchParams.get('view');
-    const user = view ? await researchAccess() : await userAccess();
-    if (view === 'shop' && provider === 'etsy') return json(await connectedShop(user.userId));
-    if (view === 'listing' && provider === 'etsy') return json(await connectedListing(user.userId, new URL(request.url).searchParams.get('url') || ''));
-    if (view === 'boards' && provider === 'pinterest') return json(await pinterestBoards(user.userId));
-    if (view) throw new ApiError(400, 'Choose a supported connection view.');
+    if (view) return json({ error: 'This connection view has been retired. Use your approved own-listing catalog.', code: 'FEATURE_RETIRED' }, 410);
+    const user = await userAccess();
     return json({ ...await connectionStatus(user.userId, provider), ...(provider === 'email' ? { recipient: user.email } : {}) });
   } catch (error) { return errorResponse(error); }
 }

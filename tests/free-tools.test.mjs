@@ -82,14 +82,9 @@ test('Email composer produces an editable draft with accurate user content and r
   assert.throws(() => tools.composeEmail({ kind: 'offer', shop: 'Shop', product: 'Print', details: '', link: 'javascript:alert(1)', address: '', unsubscribe: '' }));
 });
 
-test('Pinterest shares use the real manual save endpoint and encode safe source, image and caption values', () => {
-  const url = new URL(tools.pinterestShare('https://www.etsy.com/listing/123/floral?ref=shop', 'https://i.etsystatic.com/own-image.jpg?size=large', 'Flowers & art\nYour own design'));
-  assert.equal(url.origin + url.pathname, 'https://www.pinterest.com/pin/create/button/');
-  assert.equal(url.searchParams.get('description'), 'Flowers & art\nYour own design');
-  assert.equal(url.searchParams.get('media'), 'https://i.etsystatic.com/own-image.jpg?size=large');
-  for (const source of ['https://etsy.com.evil.example/listing/123', 'https://www.etsy.com/shop/Other', 'javascript:alert(1)', 'https://user:pass@www.etsy.com/listing/123']) assert.throws(() => tools.pinterestShare(source, 'https://example.com/a.jpg', ''));
-  assert.throws(() => tools.pinterestShare('https://www.etsy.com/listing/123', 'file:///private/image.jpg', ''));
-  assert.throws(() => tools.safePublicUrl('https://exa\nmple.com/image'));
+test('Manual draft links reject unsafe schemes, embedded credentials, and control characters', () => {
+  assert.equal(tools.safePublicUrl('https://example.com/item?x=1'), 'https://example.com/item?x=1');
+  for (const source of ['javascript:alert(1)', 'https://user:pass@example.com/item', 'file:///private/image.jpg', 'https://exa\nmple.com/image']) assert.throws(() => tools.safePublicUrl(source));
 });
 
 test('Reminder restoration validates dates and data shape; calendar export skips completed tasks and escapes text', () => {
@@ -110,17 +105,7 @@ test('CSV export escapes quotes and neutralizes spreadsheet formula injection', 
   assert.equal(csv, '"Order ""one""","\'=SUM(A1:A2)","\' @payload","normal"');
 });
 
-test('Ad scenarios use entered assumptions and protect zero or invalid denominators', () => {
-  const result = tools.planAds({ budget: 100, cpc: .5, conversionPercent: 2, orderValue: 20, orderCost: 8 });
-  close(result.clicks, 200); close(result.orders, 4); close(result.revenue, 80); close(result.profit, -52); close(result.roas, .8);
-  assert.equal(tools.planAds({ budget: 0, cpc: .5, conversionPercent: 2, orderValue: 20, orderCost: 8 }).roas, null);
-  assert.throws(() => tools.planAds({ budget: 100, cpc: 0, conversionPercent: 2, orderValue: 20, orderCost: 8 }));
-});
-
-test('Variant comparison reports descriptive differences without inventing a zero-baseline lift', () => {
-  const result = tools.compareVariants(100, 2, 100, 3);
-  close(result.rateA, 2); close(result.rateB, 3); close(result.difference, 1); close(result.relativeChange, 50);
-  assert.equal(tools.compareVariants(100, 0, 100, 3).relativeChange, null);
-  assert.equal(tools.compareVariants(0, 0, 100, 3).difference, null);
-  assert.throws(() => tools.compareVariants(10, 11, 100, 1));
+test('The public catalog exposes manual preparation tools without retired marketing or analytics functions', () => {
+  assert.deepEqual(Array.from(tools.freeTools, tool => tool.slug), ['etsy-fee-calculator', 'listing-helper', 'shop-name-generator', 'privacy-policy-builder', 'profit-planner', 'email-composer', 'followup-reminder']);
+  for (const retired of ['pinterestShare', 'etsyListingUrl', 'planAds', 'compareVariants']) assert.equal(tools[retired], undefined);
 });

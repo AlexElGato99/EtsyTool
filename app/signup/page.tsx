@@ -5,8 +5,8 @@ import { SiteHeader, SiteFooter } from '../../components/site-shell';
 import { BrandMark } from '../../components/site-icon';
 
 export const metadata: Metadata = {
-  title: 'Create a free account · PNG Scout',
-  description: 'Create a free PNG Scout account. A noncommercial tool for digital product research, with no subscriptions or payment required.',
+  title: 'Create a free account · podadd',
+  description: 'Create a free podadd account to keep your own manual listing drafts. No subscriptions or payment required.',
 };
 
 export const dynamic = 'force-dynamic';
@@ -17,13 +17,13 @@ export default function SignupPage() {
     <main id="main" className="auth-page" tabIndex={-1}>
       <div className="container auth-layout">
         <section className="auth-intro">
-          <a className="brand auth-brand" href="/" aria-label="PNG Scout home"><BrandMark /></a>
-          <span className="eyebrow">Free for curious creators</span>
-          <h1>Make room for your next idea.</h1>
-          <p>Create your free account and give your product research a place to grow. PNG Scout is a noncommercial project, built to make research easier.</p>
+          <a className="brand auth-brand" href="/" aria-label="podadd home"><BrandMark /></a>
+          <span className="eyebrow">Free tools for your own shop</span>
+          <h1>Give your next draft a home.</h1>
+          <p>Create your free account to keep your own titles, tags, descriptions, and working notes together. Manual drafts work independently of Etsy API access.</p>
           <ul className="auth-benefits">
             <li><PiCheckCircleBold aria-hidden="true" /><span>Every available feature is free to use.</span></li>
-            <li><PiLockKeyBold aria-hidden="true" /><span>Your account keeps your saved research private.</span></li>
+            <li><PiLockKeyBold aria-hidden="true" /><span>Your account keeps your manual drafts private.</span></li>
             <li><PiSparkleBold aria-hidden="true" /><span>No paid plans, checkout, or credit card required.</span></li>
           </ul>
         </section>

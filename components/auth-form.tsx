@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState, type FormEvent } from 'react';
 import { PiArrowRightBold, PiEyeBold, PiEyeSlashBold, PiShieldCheckBold } from 'react-icons/pi';
 import { safeWorkspaceDestination, workspaceAuthHref } from '../lib/workspace-link';
+import { APPLICATION_TERMS_VERSION } from '../lib/terms-version';
 
 type AuthFormProps = { mode: 'login' | 'signup' };
 
@@ -12,6 +13,8 @@ const safeErrors = new Set([
   'Enter a valid email and password of at least 8 characters.',
   'Unable to sign in. Check your email, password, and email confirmation.',
   'Account registration could not be completed. Check your details or try signing in.',
+  'Please agree to the current Terms of Use and acknowledge the Privacy Policy.',
+  'Account access is temporarily unavailable. Please try again later.',
 ]);
 
 export default function AuthForm({ mode }: AuthFormProps) {
@@ -54,7 +57,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, ...(isSignup ? { acceptTerms: true, termsVersion: APPLICATION_TERMS_VERSION } : {}) }),
       });
       const result = await response.json();
       if (!response.ok || result.ok !== true) {
@@ -88,7 +91,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
     <div className="auth-card">
       <span className="free-badge"><PiShieldCheckBold aria-hidden="true" /> Free access · No payment required</span>
       <h2>{isSignup ? 'Create your account' : 'Welcome back'}</h2>
-      <p>{isSignup ? 'A little clarity for your next creative idea.' : 'Your research workspace is ready when you are.'}</p>
+      <p>{isSignup ? 'Prepare your own listings with a free, practical toolkit.' : 'Your listing preparation workspace is ready when you are.'}</p>
       {!confirmationRequired && <form className="auth-form" onSubmit={submit} aria-busy={pending}>
         <div className="form-field">
           <label className="form-label" htmlFor="email">Email address</label>
@@ -126,10 +129,10 @@ export default function AuthForm({ mode }: AuthFormProps) {
         <Link className="button button-secondary" href={workspaceAuthHref('login', workspaceDestination)}>Go to sign in <PiArrowRightBold aria-hidden="true" /></Link>
       </>}
       <div className="auth-links">
-        <p>{isSignup ? 'Already have an account?' : 'New to PNG Scout?'} <Link href={workspaceAuthHref(isSignup ? 'login' : 'signup', workspaceDestination)}>{isSignup ? 'Sign in' : 'Create a free account'}</Link></p>
+        <p>{isSignup ? 'Already have an account?' : 'New to podadd?'} <Link href={workspaceAuthHref(isSignup ? 'login' : 'signup', workspaceDestination)}>{isSignup ? 'Sign in' : 'Create a free account'}</Link></p>
         <Link href="/">Back to the homepage</Link>
       </div>
-      {!isSignup && <p className="auth-legal">By using PNG Scout, you agree to our <Link href="/terms">Terms of Use</Link>. See how we handle data in our <Link href="/privacy">Privacy Policy</Link>.</p>}
+      {!isSignup && <p className="auth-legal">By using podadd, you agree to our <Link href="/terms">Terms of Use</Link>. See how we handle data in our <Link href="/privacy">Privacy Policy</Link>.</p>}
     </div>
   );
 }

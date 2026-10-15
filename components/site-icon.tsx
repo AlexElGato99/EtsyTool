@@ -1,4 +1,4 @@
-﻿import {
+import {
   PiCompassBold, PiArrowRightBold, PiMagnifyingGlassBold, PiTagBold,
   PiBookmarkSimpleBold, PiCheckBold, PiFileBold, PiLockKeyBold,
   PiClockCounterClockwiseBold, PiInfoBold, PiCaretDownBold,
@@ -6,6 +6,7 @@
   PiCalculatorBold, PiBrowserBold, PiPinterestLogoBold, PiBookOpenBold,
   PiMegaphoneBold, PiFlaskBold, PiChatCircleTextBold, PiSquaresFourBold,
 } from 'react-icons/pi';
+import { projectName } from '../lib/brand';
 
 const icons = {
   compass: PiCompassBold, arrow: PiArrowRightBold, search: PiMagnifyingGlassBold,
@@ -23,5 +24,5 @@ export function SiteIcon({ name, className = 'icon' }: { name: keyof typeof icon
   return <Icon className={className} aria-hidden="true" focusable="false" />;
 }
 export function BrandMark() {
-  return <><span className="brand-symbol"><SiteIcon name="compass" /></span><span>PNG Scout<span className="brand-period">.</span></span></>;
+  return <><span className="brand-symbol"><SiteIcon name="compass" /></span><span>{projectName}<span className="brand-period">.</span></span></>;
 }

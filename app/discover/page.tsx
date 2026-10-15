@@ -1,6 +1,5 @@
-import type { Metadata } from 'next';
-import { SiteHeader, SiteFooter } from '../../components/site-shell';
-import { SiteIcon } from '../../components/site-icon';
-export const metadata: Metadata = { title: 'Discover Etsy product ideas | PNG Scout', description: 'Choose a starting category and explore actual Etsy listing information in your free research workspace.' };
-const categories = [ ['Digital planners','digital planner'],['Printable wall art','printable wall art'],['Wedding stationery','wedding invitation'],['SVG & cut files','SVG bundle'],['Business templates','business template'],['Learning printables','learning printable'],['Social media templates','social media template'],['Party invitations','party invitation'],['Journals & trackers','habit tracker'] ];
-export default function DiscoverPage() { return <><SiteHeader /><main id="main" className="container mk-feature-index" tabIndex={-1}><div className="mk-section-heading"><span className="mk-pill">A STARTING POINT FOR YOUR RESEARCH</span><h1>Find a direction<br />worth exploring.</h1><p>Choose a theme, then explore its actual Etsy listings in your workspace. These are research starting points, not a ranking of sales or trending products.</p></div><div className="mk-feature-links">{categories.map(([title,keyword]) => <a className="mk-feature-link" key={keyword} href={'/workspace?section=listings&mode=marketplace&q=' + encodeURIComponent(keyword)}><span><SiteIcon name="search" /></span><h3>{title}</h3><p>Explore public listings, compare the details, and keep useful ideas in your shortlist.</p><div className="mk-link-label">Research this category<SiteIcon name="arrow" /></div></a>)}</div></main><SiteFooter /></>; }
+import { permanentRedirect } from 'next/navigation';
+
+export default function DiscoverPage() {
+  permanentRedirect('/about#application-purpose');
+}

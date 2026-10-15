@@ -1,8 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "PNG Scout — Listing shortcut",
-  "version": "1.0.0",
-  "description": "Open the Etsy listing you are viewing in your PNG Scout workspace.",
-  "permissions": ["activeTab", "storage"],
-  "action": { "default_popup": "popup.html", "default_title": "Open in PNG Scout" }
+  "name": "podadd - Retired shortcut notice",
+  "version": "2.0.0",
+  "description": "Retirement notice only. The former listing shortcut is no longer available.",
+  "action": { "default_popup": "popup.html", "default_title": "podadd shortcut retired" }
 }

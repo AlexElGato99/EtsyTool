@@ -1,11 +1,3 @@
-import { researchAccess, errorResponse, parseBody } from '../../../../../lib/api';
-import { json, sameOrigin } from '../../../../../lib/admin';
-import { ApiError } from '../../../../../lib/etsy';
-import { sendEmailTest } from '../../../../../lib/connections';
+﻿import { json } from '../../../../../lib/admin';
 export const dynamic = 'force-dynamic';
-export async function POST(request: Request) {
-  try {
-    if (!sameOrigin(request)) throw new ApiError(403, 'Invalid request origin.');
-    return json(await sendEmailTest(await researchAccess(), await parseBody(request)));
-  } catch (error) { return errorResponse(error); }
-}
+export async function POST() { return json({ error: 'Direct marketing integrations have been retired. Use the independent manual preparation tools.', code: 'FEATURE_RETIRED' }, 410); }

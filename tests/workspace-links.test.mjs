@@ -14,13 +14,12 @@ const links = load('lib/workspace-link.ts');
 
 test('Only allowlisted workspace deep links survive destination parsing', () => {
   for (const destination of [
-    '/workspace?section=keywords', '/workspace?section=connections',
-    '/workspace?section=listings&mode=shop&q=ExampleShop',
-    '/workspace?section=listings&mode=listing&q=' + encodeURIComponent('https://www.etsy.com/listing/12345/my-listing'),
-    '/workspace?section=saved', '/workspace?section=tools', '/workspace?section=campaigns',
-    '/workspace?section=connections&connection=pinterest&result=connected',
+    '/workspace?section=drafts', '/workspace?section=connections', '/workspace?section=tools',
+    '/workspace?section=connections&connection=etsy&result=connected',
+    '/workspace?section=connections&connection=etsy&result=cancelled',
+    '/workspace?section=connections&connection=etsy&result=failed',
   ]) assert.equal(links.safeWorkspaceDestination(destination), destination);
-  assert.equal(links.safeWorkspaceDestination('/workspace?mode=shop&section=listings&q=Shop%20Name'), '/workspace?section=listings&mode=shop&q=Shop+Name');
+  assert.equal(links.safeWorkspaceDestination('/workspace?result=connected&connection=etsy&section=connections'), '/workspace?section=connections&connection=etsy&result=connected');
 });
 
 test('External, nested, ambiguous, and unrecognized destinations fall back to the workspace', () => {
@@ -37,17 +36,17 @@ test('External, nested, ambiguous, and unrecognized destinations fall back to th
   ]) assert.equal(links.safeWorkspaceDestination(destination), '/workspace', String(destination));
 });
 
-test('Queries remain data, preserve a bounded listing lookup, and cannot introduce another path', () => {
-  const query = 'https://www.etsy.com/listing/12345/?next=https://outside.example#art, 67890';
-  const destination = links.safeWorkspaceDestination('/workspace?section=listings&mode=listing&q=' + encodeURIComponent(query));
-  assert.equal(new URL(destination, 'https://scout.example').pathname, '/workspace');
-  assert.equal(new URL(destination, 'https://scout.example').searchParams.get('q'), query);
-  assert.equal(new URL(links.safeWorkspaceDestination('/workspace?q=' + 'a'.repeat(8000)), 'https://scout.example').searchParams.get('q').length, 8000);
-  assert.equal(links.safeWorkspaceDestination('/workspace?q=' + 'a'.repeat(8001)), '/workspace');
+test('Retired research and marketing destinations cannot restore removed workspace tools', () => {
+  for (const destination of [
+    '/workspace?section=keywords', '/workspace?section=saved', '/workspace?section=campaigns',
+    '/workspace?section=listings&mode=shop&q=ExampleShop', '/workspace?q=' + 'a'.repeat(8000),
+    '/workspace?section=connections&connection=pinterest', '/workspace?section=connections&connection=email',
+    '/workspace?section=drafts&result=connected&result=failed',
+  ]) assert.equal(links.safeWorkspaceDestination(destination), '/workspace');
 });
 
 test('Authentication and refresh links preserve a safe destination while retaining default routes', () => {
-  const destination = '/workspace?section=listings&mode=shop&q=ExampleShop';
+  const destination = '/workspace?section=drafts';
   for (const mode of ['login', 'signup']) {
     const href = links.workspaceAuthHref(mode, destination);
     assert.equal(new URL(href, 'https://scout.example').pathname, '/' + mode);
@@ -74,11 +73,11 @@ function workspaceFixture({ user = null, refreshRequired = false, refreshed = nu
 }
 
 test('Signed-out workspace requests retain the selected feature through sign-in or refresh', async () => {
-  const destination = '/workspace?section=listings&mode=shop&q=ExampleShop';
+  const destination = '/workspace?section=tools';
   for (const refreshRequired of [false, true]) {
     const fixture = workspaceFixture({ refreshRequired });
     const expected = refreshRequired ? links.workspaceRefreshHref(destination) : links.workspaceAuthHref('login', destination);
-    await assert.rejects(fixture.page.default({ searchParams: Promise.resolve({ section: 'listings', mode: 'shop', q: 'ExampleShop' }) }), error => error.location === expected);
+    await assert.rejects(fixture.page.default({ searchParams: Promise.resolve({ section: 'tools' }) }), error => error.location === expected);
     assert.equal(fixture.cookieWrites.length, 0);
   }
 });
@@ -122,6 +121,7 @@ function authFixture(mode, next, confirmationRequired = false) {
   const window = { location: { search: '?next=' + encodeURIComponent(next), assign: value => destinations.push(value) } };
   const component = load('components/auth-form.tsx', {
     react, '../lib/workspace-link': links, 'next/link': { __esModule: true, default: 'Link' },
+    '../lib/terms-version': load('lib/terms-version.ts'),
     'react/jsx-runtime': { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) },
   }, {
     window,
@@ -139,7 +139,7 @@ function findNodes(tree, predicate) {
 }
 
 test('Switching sign-in/signup and successful authentication preserve the feature destination', async () => {
-  const destination = '/workspace?section=keywords';
+  const destination = '/workspace?section=drafts';
   for (const mode of ['login', 'signup']) {
     const fixture = authFixture(mode, destination);
     const switched = findNodes(fixture.tree, node => node.type === 'Link' && node.props.href.startsWith(mode === 'login' ? '/signup' : '/login'));

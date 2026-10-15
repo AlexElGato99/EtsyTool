@@ -2,15 +2,15 @@ import { db } from './supabase';
 import { getUser } from './auth';
 import { ApiError } from './etsy';
 import { json } from './admin';
-export async function userAccess(){const user=await getUser();if(!user)throw new ApiError(401,'Sign in to use research.');return user}
+export async function userAccess(){const user=await getUser();if(!user)throw new ApiError(401,'Sign in to use your workspace.');return user}
 export async function researchAccess(){const user=await userAccess();const count=await db<number>('rpc/research_rate_limit',{method:'POST',body:{request_user_id:user.userId}});if(count>15)throw new ApiError(429,'Too many requests. Please wait one minute.');return user}
 export function errorResponse(e:unknown,options:{admin?:boolean}={}){
   let status=e instanceof ApiError?e.status:500;
   let message=e instanceof ApiError?e.message:'The request could not be completed. Please retry.';
   if(!options.admin&&e instanceof ApiError&&e.source==='etsy'){
-    if(status===403||status===503){status=503;message='Research is temporarily unavailable. Please try again shortly.'}
-    else if(status===429)message='Research is busy right now. Please wait a minute and try again.';
-    else if(status===502)message='Research could not be reached. Please try again shortly.';
+    if(status===403||status===503){status=503;message='The shop connection is currently unavailable. You can continue with the manual tools.'}
+    else if(status===429)message='The shop connection is busy right now. Please wait a minute and try again.';
+    else if(status===502)message='The shop connection could not be reached. Please try again shortly.';
   }
   return json({error:message,code:status},status);
 }

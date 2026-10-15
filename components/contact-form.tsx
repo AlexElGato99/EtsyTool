@@ -28,7 +28,7 @@ export default function ContactForm({ email }: ContactFormProps) {
       return null;
     }
 
-    const emailSubject = `PNG Scout: ${subject}`;
+    const emailSubject = `podadd: ${subject}`;
     const body = `Name: ${name}\r\nEmail: ${senderEmail}\r\n\r\n${message}`;
     return {
       url: `mailto:${email}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(body)}`,

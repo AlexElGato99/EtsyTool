@@ -1,0 +1,34 @@
+.ea-settings { display: grid; gap: 22px; }
+.ea-status { display: flex; align-items: flex-start; gap: 13px; padding: 19px; background: #f1f2fd; border: 1px solid #dfe1f7; border-radius: 12px; color: #4d50b5; }
+.ea-status > div { flex: 1; }
+.ea-status strong { font-weight: 800; }
+.ea-status p { font-size: 12px; margin-top: 3px; }
+.ea-status.ea-enabled { border-color: #c9d5f7; background: #edf2ff; }
+.ea-state-label { border-radius: 20px; padding: 3px 9px; background: #fff; color: #5c6382; text-transform: capitalize; font-size: 10px; font-weight: 800; }
+.ea-record { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 15px; margin: 20px 0; padding-bottom: 20px; border-bottom: 1px solid #e4e7f1; }
+.ea-record dt { color: #6a7288; font-size: 10px; font-weight: 750; }
+.ea-record dd { margin: 3px 0 0; font-size: 12px; font-weight: 800; overflow-wrap: anywhere; }
+.ea-setup-note { display: flex; align-items: center; gap: 15px; justify-content: space-between; padding: 13px; border-radius: 8px; background: #f5f6fc; font-size: 12px; }
+.ea-fields { border: 0; margin: 0; padding: 0; display: grid; gap: 18px; min-width: 0; }
+.ea-field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px; }
+.ea-fields label, .ea-confirm > label { display: flex; flex-direction: column; gap: 7px; font-size: 12px; font-weight: 750; color: #46516c; }
+.ea-fields :is(input:not([type="checkbox"]), select, textarea), .ea-confirm input { min-width: 0; width: 100%; color: #29344e; background: #fff; border: 1px solid #dce0ed; border-radius: 7px; padding: 11px 12px; font: inherit; }
+.ea-fields textarea { resize: vertical; background: #f7f8fc; line-height: 1.6; }
+.ea-fields :disabled { cursor: not-allowed; }
+.ea-fields .ad-field-help { font-weight: 500; }
+.ea-fields .ea-checkbox { flex-direction: row; align-items: flex-start; gap: 10px; font-weight: 600; line-height: 1.6; }
+.ea-checkbox input { width: 17px; height: 17px; flex-shrink: 0; margin: 2px 0 0; accent-color: #4d50ce; }
+.ea-fields > .ad-button { justify-self: start; }
+.ea-links { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-top: 24px; font-size: 11px; font-weight: 800; }
+.ea-links a { color: #4d50c2; }
+.ea-links a:hover { color: #3033a0; text-decoration: none; }
+.ea-control-row { display: flex; align-items: flex-start; gap: 20px; justify-content: space-between; padding: 20px 0; border-top: 1px solid #e8eaf2; }
+.ea-control-row h3 { font-size: 13px; margin-bottom: 4px; }
+.ea-control-row p { font-size: 12px; max-width: 520px; }
+.ea-control-row .ad-button { flex-shrink: 0; font-size: 11px; }
+.ea-confirm { padding: 18px; border: 1px solid #f0d6da; background: #fff8f9; border-radius: 9px; }
+.ea-confirm h3 { font-size: 14px; margin-bottom: 8px; }
+.ea-confirm p { font-size: 12px; margin-bottom: 15px; }
+.ea-confirm > div { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 15px; }
+.ea-confirm input { max-width: 300px; }
+@media (max-width: 640px) { .ea-record, .ea-field-row { grid-template-columns: 1fr; } .ea-control-row, .ea-setup-note { flex-direction: column; } .ea-status { flex-wrap: wrap; } .ea-state-label { margin-left: 34px; } .ea-fields > .ad-button { width: 100%; justify-content: center; } }

@@ -2,6 +2,7 @@ import { parseBody } from '../../../../lib/api';
 import { isOwner, sameOrigin, json } from '../../../../lib/admin';
 import { publicSettings, readSetting, writeSetting, encryptCredentials } from '../../../../lib/settings';
 import { getPublicContact, validatePublicContact } from '../../../../lib/public-contact';
+import { invalidateEtsyApproval } from '../../../../lib/etsy-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +17,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!await isOwner()) return json({ error: 'Owner access required' }, 403);
   if (!sameOrigin(request)) return json({ error: 'Invalid request origin' }, 403);
+  if (!await isOwner()) return json({ error: 'Owner access required' }, 403);
   if (Number(request.headers.get('content-length')) > 16000) return json({ error: 'Request too large' }, 413);
   try {
     const body = await parseBody(request);
@@ -28,12 +29,15 @@ export async function POST(request: Request) {
       return json({ saved: true, publicContact: contact });
     }
     if (body.action === 'credentials') {
-      if (typeof body.key !== 'string' || typeof body.secret !== 'string' || !body.key.trim() || !body.secret.trim() || body.key.length > 1024 || body.secret.length > 1024) return json({ error: 'Enter a valid API key and shared secret' }, 400);
+      if (typeof body.key !== 'string' || typeof body.secret !== 'string' || !body.key.trim() || !body.secret.trim() || body.key.length > 1024 || body.secret.length > 1024 || /[\s\u0000-\u001f\u007f]/.test(body.key.trim() + body.secret.trim())) return json({ error: 'Enter a valid API key and shared secret' }, 400);
+      const encrypted = await encryptCredentials({ key: body.key.trim(), secret: body.secret.trim() });
+      await invalidateEtsyApproval();
       await writeSetting('connection_status', null);
-      await writeSetting('etsy_credentials', await encryptCredentials({ key: body.key.trim(), secret: body.secret.trim() }));
+      await writeSetting('etsy_credentials', encrypted);
       return json({ saved: true, credentialsSaved: true, connection: await readSetting('connection_status') });
     }
     if (body.action === 'removeCredentials') {
+      await invalidateEtsyApproval('withdrawn');
       await writeSetting('etsy_credentials', null);
       await writeSetting('connection_status', null);
       return json({ saved: true, credentialsSaved: false });

@@ -1,10 +1,9 @@
 const workspaceEnums: Record<string, readonly string[]> = {
-  section: ['listings', 'keywords', 'saved', 'connections', 'tools', 'campaigns'],
-  mode: ['marketplace', 'shop', 'listing'],
-  connection: ['etsy', 'pinterest', 'email'],
+  section: ['drafts', 'connections', 'tools'],
+  connection: ['etsy'],
   result: ['connected', 'cancelled', 'failed'],
 };
-const workspaceKeys = ['section', 'mode', 'q', 'connection', 'result'];
+const workspaceKeys = ['section', 'connection', 'result'];
 
 // Authentication can return only to the workspace. Parse into fresh parameters
 // rather than reflecting a caller-provided URL or accepting nested return paths.
@@ -20,13 +19,8 @@ export function safeWorkspaceDestination(value: unknown): string {
   for (const key of workspaceKeys) {
     const item = params.get(key);
     if (item === null) continue;
-    if (key === 'q') {
-      if (item.length > 8000 || /[\u0000\u007f]/.test(item)) return '/workspace';
-      if (item) safe.set(key, item);
-    } else {
-      if (!workspaceEnums[key].includes(item)) return '/workspace';
-      safe.set(key, item);
-    }
+    if (!workspaceEnums[key].includes(item)) return '/workspace';
+    safe.set(key, item);
   }
   const serialized = safe.toString();
   return serialized ? '/workspace?' + serialized : '/workspace';

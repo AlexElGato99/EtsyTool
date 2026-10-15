@@ -6,8 +6,8 @@ import { SiteHeader, SiteFooter } from '../../components/site-shell';
 import { getPublicContact } from '../../lib/public-contact';
 
 export const metadata: Metadata = {
-  title: 'Contact | PNG Scout',
-  description: 'Contact the PNG Scout operator for support, feedback, or privacy and account requests.',
+  title: 'Contact | podadd',
+  description: 'Contact the podadd operator for support, feedback, or privacy and account requests.',
 };
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +22,7 @@ export default async function ContactPage() {
         <header className="page-intro centered-intro">
           <p className="page-eyebrow">Contact</p>
           <h1 className="page-title">We&apos;re here to help.</h1>
-          <p className="page-description">Have a question, need support, or want to share an idea? Write a message to the person behind PNG Scout.</p>
+          <p className="page-description">Have a question, need support, or want to share an idea? Write a message to the person behind podadd.</p>
         </header>
 
         <section className="info-card contact-form-card" aria-labelledby="contact-form-title">

@@ -1,16 +1,9 @@
-import type { Metadata } from 'next';
-import { notFound, redirect } from 'next/navigation';
-import { SiteHeader, SiteFooter } from '../../../components/site-shell';
-import { SiteIcon } from '../../../components/site-icon';
-import { HeroWorkspace } from '../../../components/product-tour';
-import { FreeTool } from '../../../components/free-tools';
-import { features, featureBySlug } from '../../../lib/site-content';
-export function generateStaticParams() { return features.map(feature => ({ slug: feature.slug })); }
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> { const { slug } = await params; const feature = featureBySlug(slug); return { title: feature ? feature.title + ' — Free | PNG Scout' : 'Feature not found | PNG Scout', description: feature?.description }; }
+import { notFound, permanentRedirect } from 'next/navigation';
+import { featureBySlug, retiredFeatures } from '../../../lib/site-content';
+
 export default async function FeaturePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const aliases: Record<string,string> = { 'product-research':'product-seeker','alura-extension':'browser-extension','shop-finances':'shop-analytics','etsy-ads-management':'etsy-ads' };
-  if (aliases[slug]) redirect('/features/' + aliases[slug]);
-  const feature = featureBySlug(slug); if (!feature) notFound();
-  return <><SiteHeader /><main id="main" className="mk-feature" tabIndex={-1}><section className="mk-feature-hero"><div className="container mk-feature-layout"><div className="mk-feature-copy"><span className="mk-pill"><SiteIcon name={feature.icon} />{feature.title}</span><h1>{feature.headline}</h1><p>{feature.description}</p><ul>{feature.bullets.map(item => <li key={item}><SiteIcon name="check" />{item}</li>)}</ul><div className="mk-actions"><a className="button" href={feature.href}>{feature.action}<SiteIcon name="arrow" /></a><a className="button button-secondary" href="/features">Explore all features</a></div><p className="mk-feature-note">Free to use. No subscription or payment details.</p></div>{feature.category === 'Research' ? <HeroWorkspace /> : <div className="mk-task-list">{feature.steps.map((step,index) => <a key={step} href={feature.href}><span><SiteIcon name={index === 0 ? feature.icon : index === 1 ? 'check' : 'arrow'} /></span><div><strong>Step {index + 1}</strong><small>{step}</small></div><SiteIcon name="arrow" /></a>)}</div>}</div></section><section className="container mk-section mk-feature-detail"><span className="section-label">A PRACTICAL WAY TO WORK</span><h2>{feature.title}, clearly explained.</h2><p>{feature.detail}</p><div className="mk-feature-steps">{feature.steps.map((step,index) => <div key={step}><span>{index + 1}</span><p>{step}</p></div>)}</div><a className="button" href={feature.href}>{feature.action}<SiteIcon name="arrow" /></a></section>{'tool' in feature && <section className="container mk-section"><div className="mk-section-heading"><span className="section-label">TRY IT HERE</span><h2>Make your next step concrete.</h2><p>This tool is free and open to everyone.</p></div><FreeTool slug={feature.tool} /></section>}<section className="container"><div className="mk-cta"><h2>One toolkit. A clearer process.</h2><p>Bring your product research and planning together in a free account.</p><div className="mk-actions"><a className="button" href="/signup">Start for free<SiteIcon name="arrow" /></a><a className="button button-secondary" href="/help">Get help</a></div></div></section></main><SiteFooter /></>;
+  const feature = featureBySlug(slug);
+  if (!feature && !retiredFeatures.some(value => value === slug)) notFound();
+  permanentRedirect(feature?.href ?? '/about#application-purpose');
 }

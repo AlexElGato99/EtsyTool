@@ -16,10 +16,8 @@ alter table public.request_limits enable row level security;
 revoke all on public.app_admins,public.app_settings,public.research_cache,public.listing_snapshots,public.request_limits from anon,authenticated;
 revoke all on public.watchlist from anon,authenticated;
 grant select,insert,update,delete on public.app_admins,public.app_settings,public.research_cache,public.watchlist,public.listing_snapshots,public.request_limits to service_role;
--- Browser tokens can only read their own saved products. All writes use checked server endpoints.
-grant select on public.watchlist to authenticated;
+-- Legacy Etsy payloads are unavailable to browser tokens; cleanup is an explicit owner action.
 drop policy if exists watchlist_read_own on public.watchlist;
-create policy watchlist_read_own on public.watchlist for select to authenticated using(user_id=(select auth.uid()));
 create or replace function public.research_rate_limit(request_user_id uuid) returns integer language plpgsql security definer set search_path=public as $$
 declare current_minute bigint := floor(extract(epoch from now())/60); requests integer;
 begin

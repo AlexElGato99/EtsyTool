@@ -36,7 +36,9 @@ function plain(value: unknown, label: string, max: number, required = true, mult
 }
 function email(value: unknown) {
   if (typeof value !== 'string' || value.length > 254 || !/^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}$/.test(value.trim()) || /\.\.|\{\{|\}\}/.test(value)) throw new ApiError(400, 'Enter a valid email address.');
-  return value.trim().toLowerCase();
+  const address = value.trim().toLowerCase(); const [local, domain] = address.split('@');
+  if (local.startsWith('.') || local.endsWith('.') || domain.split('.').some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) throw new ApiError(400, 'Enter a valid email address.');
+  return address;
 }
 function credentials(body: Record<string, unknown>) {
   if (typeof body.apiKey !== 'string' || !/^re_[A-Za-z0-9_-]{10,200}$/.test(body.apiKey.trim())) throw new ApiError(400, 'Enter your own Resend full-access API key.');
@@ -57,11 +59,11 @@ export function campaignHtml(text: string) {
   return `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#17212f;max-width:640px;margin:auto"><div style="white-space:pre-wrap">${escapeHtml(text)}</div><hr><p style="font-size:12px;color:#64748b">You receive this email because you opted in to this sender’s updates. <a href="{{{RESEND_UNSUBSCRIBE_URL}}}">Unsubscribe</a></p></div>`;
 }
 function from(record: RecordValue) { return record.fromName ? `${record.fromName} <${record.fromEmail}>` : record.fromEmail; }
-function broadcastBody(record: RecordValue, value: { subject: string; text: string }, remoteName: string) {
-  return { segment_id: record.segmentId, from: from(record), name: remoteName, subject: value.subject, html: campaignHtml(value.text), text: value.text + '\n\nUnsubscribe: {{{RESEND_UNSUBSCRIBE_URL}}}' };
+function broadcastBody(record: RecordValue, value: { subject: string; text: string }, remoteName: string, create = false) {
+  return { ...(create ? { segment_id: record.segmentId } : {}), from: from(record), name: remoteName, subject: value.subject, html: campaignHtml(value.text), text: value.text + '\n\nUnsubscribe: {{{RESEND_UNSUBSCRIBE_URL}}}' };
 }
 function metadata(record: RecordValue | null) {
-  return { provider: 'resend' as const, configured: !!record?.segmentId, connected: !!record?.segmentId, fromEmail: record?.fromEmail ?? null, fromName: record?.fromName ?? null, segmentId: record?.segmentId ?? null, segmentName: record?.segmentName ?? null, connectedAt: record?.segmentId ? record.connectedAt : null, contactLimit: CONTACT_LIMIT, broadcastLimit: BROADCAST_LIMIT, connectionPending: !!record && !record.segmentId };
+  return { provider: 'resend' as const, configured: !!record?.segmentId, connected: !!record?.segmentId, fromEmail: record?.fromEmail ?? null, fromName: record?.fromName ?? null, segmentId: record?.segmentId ?? null, segmentName: record?.segmentName ?? null, connectedAt: record?.segmentId ? record.connectedAt : null, contactLimit: CONTACT_LIMIT, broadcastLimit: BROADCAST_LIMIT, connectionPending: !!record && !record.segmentId, pendingAction: record?.pending?.action ?? null, pendingRequestId: record?.pending?.requestId ?? null, pendingBroadcastId: record?.pending?.broadcastId ?? null };
 }
 function publicBroadcast(ref: BroadcastRef): CampaignBroadcast {
   return { id: ref.id, name: ref.name, subject: ref.subject, text: ref.text, status: ref.sendUncertain ? 'unknown' : ref.status, createdAt: ref.createdAt, scheduledAt: ref.scheduledAt, sentAt: ref.sentAt };
@@ -91,6 +93,12 @@ async function save(context: Context, release = false) {
   const next: Envelope = { revision: crypto.randomUUID(), encrypted: context.record ? await encryptCredentials(context.record) : null, lock: release ? null : { id: context.lockId, expiresAt: Date.now() + LEASE_MS } };
   if (!await cas(context.userId, context.envelope.revision, next)) throw new ApiError(409, 'Your campaign account changed. Refresh before trying again.');
   context.envelope = next;
+}
+async function releaseDurableLease(context: Context) {
+  const current = await read(context.userId);
+  if (current.envelope?.lock?.id !== context.lockId) return;
+  // Preserve the last durable ciphertext when a receipt write failed; only release our own lease.
+  await cas(context.userId, current.envelope.revision, { ...current.envelope, revision: crypto.randomUUID(), lock: null });
 }
 class ProviderError extends ApiError {
   constructor(status: number, message: string, public readonly uncertain = false, public readonly rejectedMutation = false, public readonly providerStatus = status) { super(status, message); }
@@ -152,7 +160,7 @@ function account(context: Context) {
 }
 function ownBroadcast(record: RecordValue, value: unknown) {
   const broadcastId = id(value, 'campaign'); const ref = record.broadcasts.find(item => item.id === broadcastId);
-  if (!ref) throw new ApiError(404, 'Campaign not found in your PNG Scout account.');
+  if (!ref) throw new ApiError(404, 'Campaign not found in your podadd account.');
   return ref;
 }
 async function refreshRef(context: Context, ref: BroadcastRef) {
@@ -190,7 +198,8 @@ function result(context: Context, receipt?: Receipt) {
   return { account: metadata(record), ...(ref ? { broadcast: publicBroadcast(ref) } : {}), ...(receipt?.removed ? { removed: true } : {}), ...(receipt?.deleted ? { deleted: true } : {}) };
 }
 async function finish(context: Context, receipt: Receipt) {
-  context.record!.receipts.push(receipt); context.record!.receipts = context.record!.receipts.slice(-100); delete context.record!.pending;
+  context.record!.receipts.push(receipt); context.record!.receipts = context.record!.receipts.slice(-100);
+  if (context.record!.pending?.requestId === receipt.requestId && context.record!.pending.action === receipt.action) delete context.record!.pending;
   await save(context);
   return result(context, receipt);
 }
@@ -244,7 +253,7 @@ export async function campaignAction(userId: string, body: Record<string, unknow
       if (context.record?.segmentId) return result(context);
       if (!context.record) {
         const domainId = await verifySender(context, value);
-        context.record = { ownerId: userId, ...value, fingerprint: binding, connectedAt: isoNow(), segmentId: null, segmentName: 'PNG Scout ' + crypto.randomUUID(), domainId, contacts: [], broadcasts: [], receipts: [] };
+        context.record = { ownerId: userId, ...value, fingerprint: binding, connectedAt: isoNow(), segmentId: null, segmentName: 'podadd ' + crypto.randomUUID(), domainId, contacts: [], broadcasts: [], receipts: [] };
       }
       const record = context.record;
       if (!record.pending) { record.pending = { action, requestId, payloadHash, attempted: false }; await save(context); }
@@ -255,6 +264,8 @@ export async function campaignAction(userId: string, body: Record<string, unknow
       return await finish(context, { action, requestId, payloadHash });
     }
     const record = account(context);
+    // Older entries may retain removal markers; only active membership consent counts toward the limit.
+    record.contacts = record.contacts.filter(item => !item.removedAt);
     if (action === 'add-contact') {
       const address = normalized.email as string;
       let current = await remote(record.apiKey, '/contacts/' + encodeURIComponent(address), 'GET', undefined, context);
@@ -288,7 +299,7 @@ export async function campaignAction(userId: string, body: Record<string, unknow
       if (!segmentMembers.some(item => item.id === contactId)) {
         if (!consent) throw new ApiError(404, 'Contact not found in your campaign segment.');
       } else await remote(record.apiKey, `/contacts/${contactId}/segments/${record.segmentId}`, 'DELETE', undefined, context);
-      if (consent) consent.removedAt = isoNow();
+      record.contacts = record.contacts.filter(item => item.id !== contactId);
       return await finish(context, { action, requestId, payloadHash, contactId, removed: true });
     }
     if (action === 'create-draft') {
@@ -298,7 +309,7 @@ export async function campaignAction(userId: string, body: Record<string, unknow
       const intent = record.pending;
       let created = intent.attempted ? await findNamed(context, 'broadcasts', intent.remoteName!) : null;
       if (!created && intent.attempted) throw new ApiError(409, 'Draft creation could not be confirmed. Review your Resend account before starting another draft.');
-      if (!created) { intent.attempted = true; await save(context); created = await remote(record.apiKey, '/broadcasts', 'POST', broadcastBody(record, value, intent.remoteName!), context); }
+      if (!created) { intent.attempted = true; await save(context); created = await remote(record.apiKey, '/broadcasts', 'POST', broadcastBody(record, value, intent.remoteName!, true), context); }
       const broadcastId = id(created?.id, 'campaign');
       const ref: BroadcastRef = { id: broadcastId, ...value, remoteName: intent.remoteName!, status: 'draft', createdAt: isoNow(), scheduledAt: null, sentAt: null };
       await refreshRef(context, ref); record.broadcasts.unshift(ref);
@@ -317,6 +328,10 @@ export async function campaignAction(userId: string, body: Record<string, unknow
       Object.assign(ref, value); return await finish(context, { action, requestId, payloadHash, broadcastId: ref.id });
     }
     if (action === 'delete-draft') {
+      if (ref.status === 'deleted') {
+        record.broadcasts = record.broadcasts.filter(item => item.id !== ref.id);
+        return await finish(context, { action, requestId, payloadHash, deleted: true });
+      }
       if (ref.status !== 'draft' || ref.sendUncertain) throw new ApiError(409, 'Only a confirmed unsent draft can be deleted.');
       await remote(record.apiKey, '/broadcasts/' + ref.id, 'DELETE', undefined, context);
       record.broadcasts = record.broadcasts.filter(item => item.id !== ref.id);
@@ -325,7 +340,9 @@ export async function campaignAction(userId: string, body: Record<string, unknow
     if (action === 'cancel') {
       if (!['scheduled', 'queued'].includes(ref.status)) throw new ApiError(409, 'Only a scheduled or queued campaign can be canceled. Already sent messages cannot be recalled.');
       await remote(record.apiKey, '/broadcasts/' + ref.id + '/cancel', 'POST', {}, context);
-      await refreshRef(context, ref); return await finish(context, { action, requestId, payloadHash, broadcastId: ref.id });
+      await refreshRef(context, ref);
+      if (record.pending?.broadcastId === ref.id) delete record.pending;
+      return await finish(context, { action, requestId, payloadHash, broadcastId: ref.id });
     }
     if (ref.status !== 'draft' || ref.sendUncertain || record.pending?.attempted) throw new ApiError(409, 'This campaign was already submitted or needs status confirmation. Refresh it instead of sending again.');
     if (normalized.scheduledAt) {
@@ -335,10 +352,10 @@ export async function campaignAction(userId: string, body: Record<string, unknow
     const recipients = await members(context);
     const subscribed = recipients.filter(item => !item.unsubscribed);
     if (!subscribed.length) throw new ApiError(409, 'Add at least one opted-in, subscribed contact before sending.');
-    if (subscribed.some(item => !item.consentRecorded)) throw new ApiError(409, 'Every subscribed member of this segment must have consent recorded in PNG Scout. Confirm consent for each contact before sending.');
+    if (subscribed.some(item => !item.consentRecorded)) throw new ApiError(409, 'Every subscribed member of this segment must have consent recorded in podadd. Confirm consent for each contact before sending.');
     const domain = await remote(record.apiKey, '/domains/' + record.domainId, 'GET', undefined, context);
     if (!domain || domain.status !== 'verified' || domain.capabilities?.sending === 'disabled') throw new ApiError(409, 'Your Resend sender domain is not verified for sending.');
-    // Overwrite all delivery-sensitive fields immediately before send; dashboard edits cannot change the audience or remove unsubscribe.
+    // The segment is immutable and checked by refreshRef; PATCH supports sender/content fields, not segment_id.
     await remote(record.apiKey, '/broadcasts/' + ref.id, 'PATCH', broadcastBody(record, ref, ref.remoteName), context);
     record.pending = { action, requestId, payloadHash, attempted: true, broadcastId: ref.id, scheduledAt: normalized.scheduledAt as string | null };
     ref.sendUncertain = true; await save(context);
@@ -347,11 +364,13 @@ export async function campaignAction(userId: string, body: Record<string, unknow
     await refreshRef(context, ref);
     return await finish(context, { action, requestId, payloadHash, broadcastId: ref.id });
   } catch (error) {
-    if (error instanceof ProviderError && !error.uncertain && error.rejectedMutation && context.record?.pending) {
+    if (error instanceof ProviderError && !error.uncertain && error.rejectedMutation && context.record?.pending?.requestId === requestId && context.record.pending.action === action) {
       const pending = context.record.pending;
       if (pending.broadcastId) { const ref = context.record.broadcasts.find(item => item.id === pending.broadcastId); if (ref) ref.sendUncertain = false; }
       delete context.record.pending;
     }
     throw error;
-  } finally { await save(context, true).catch(() => {}); }
+  } finally {
+    await save(context, true).catch(() => releaseDurableLease(context).catch(() => {}));
+  }
 }

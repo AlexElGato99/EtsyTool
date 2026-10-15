@@ -1,14 +1,11 @@
-PNG Scout — Listing shortcut (Chrome / Chromium Manifest V3)
+podadd - Retired browser shortcut
 
-1. Extract the downloaded ZIP to a folder you will keep.
-2. Open chrome://extensions (or your Chromium browser's extensions page).
-3. Enable Developer mode and choose Load unpacked.
-4. Select the folder that contains manifest.json.
-5. Click the PNG Scout toolbar shortcut and set your PNG Scout website address.
-6. Open an Etsy listing. Click Open this listing in PNG Scout.
+The former listing shortcut and downloadable ZIP have been withdrawn.
+Do not distribute this folder as an active extension or install the old ZIP.
+Remove any earlier version through your browser's extension settings.
 
-The default website is http://localhost:3000. For a deployed website, use its HTTPS address.
-Sign in to your PNG Scout account when asked; the listing shortcut is retained after sign-in.
-This extension has not been published to the Chrome Web Store.
-Permissions: activeTab (current tab URL after your click), storage (your website address).
-No page scraping, remote script, browser-history collection, or background tracking.
+This source folder is a retirement notice for existing checkouts. It requests no
+permissions, reads no tabs, stores no information, and makes no network requests.
+No JavaScript runs from the notice page. It does not open or analyze Etsy pages.
+
+Use the podadd website directly for manual preparation of your own listing copy.

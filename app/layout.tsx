@@ -1,8 +1,11 @@
 import type { Metadata } from 'next';
+import { projectName } from '../lib/brand';
 import '../public/home.css';
 export const metadata: Metadata = {
-  title: 'PNG Scout - Free research tools for digital creators',
-  description: 'A free, non-commercial workspace to explore Etsy listings, investigate keywords, and organize your product research. No paid plans or subscriptions.',
+  title: `${projectName} - Free listing preparation and shop tools`,
+  applicationName: projectName,
+  openGraph: { siteName: projectName },
+  description: 'Prepare your own listing copy, plan costs from your own inputs, and keep private manual drafts in a free workspace. No paid plans or subscriptions.',
   icons: { icon: '/favicon.svg' },
 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {

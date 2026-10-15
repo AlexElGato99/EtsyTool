@@ -1,356 +1,180 @@
-import 'server-only';
+﻿import 'server-only';
 import { cookies } from 'next/headers';
-import { db, authFetch } from './supabase';
-import { encryptCredentials, decryptCredentials, readSetting, writeSetting } from './settings';
-import { ApiError } from './etsy';
-import { listingIdFrom, positiveId } from './search-options';
+import { db } from './supabase';
+import { encryptCredentials, readSetting, writeSetting } from './settings';
+import { ApiError, decodeEtsyText, retiredEtsyFeature } from './etsy';
+import { positiveId } from './search-options';
+import { requireCurrentTerms } from './application-terms';
+import { etsyAccessStatus, requireApprovedEtsyAccess, denyObservedEtsyAccess, purgeUserEtsyGrant } from './etsy-access';
 
 export type ConnectionProvider = 'etsy' | 'pinterest' | 'email';
-export type ProviderCredentials = {
-  pinterest?: { appId: string; appSecret: string };
-  email?: { provider: 'resend' | 'brevo'; apiKey: string; fromEmail: string; fromName?: string };
-};
-export type ConnectionStatus = {
-  provider: ConnectionProvider; configured: boolean; connected: boolean;
-  label: string | null; connectedAt: string | null; permissions: string[];
-};
-type EncryptedValue = { iv: string; ciphertext: string };
-type StoredConnection = { id: string; encrypted: EncryptedValue | null };
-type TokenRecord = {
-  provider: ConnectionProvider; accessToken?: string; refreshToken?: string;
-  expiresAt?: number; refreshExpiresAt?: number; scopes: string[];
-  externalUserId?: string; label: string; connectedAt: string;
-  credentialFingerprint?: string;
-};
-type OAuthState = {
-  provider: 'etsy' | 'pinterest'; userId: string; state: string; verifier?: string;
-  expiresAt: number; redirectUri: string; clientId: string; connectionRevision: string; credentialFingerprint: string;
-};
-type Money = { amount: number; currency: string };
-const scopes = {
-  etsy: ['shops_r', 'listings_r', 'transactions_r'],
-  pinterest: ['user_accounts:read', 'boards:read', 'boards:write', 'pins:read', 'pins:write'],
-};
-const keyFor = (userId: string, provider: ConnectionProvider) => `connections:${userId}:${provider}`;
-const oauthKey = (userId: string, provider: ConnectionProvider) => `${keyFor(userId, provider)}:oauth`;
-const cookieName = (provider: ConnectionProvider) => `scout_oauth_${provider}`;
+export type ProviderCredentials = { pinterest?: { appId: string; appSecret: string }; email?: { provider: 'resend' | 'brevo'; apiKey: string; fromEmail: string; fromName?: string } };
+export type ConnectionStatus = { provider: ConnectionProvider; configured: boolean; connected: boolean; label: string | null; connectedAt: string | null; permissions: string[]; approved?: boolean; available?: boolean };
+type Encrypted = { iv: string; ciphertext: string };
+type Stored = { id: string; encrypted: Encrypted | null };
+type TokenRecord = { provider: 'etsy'; userId: string; accessToken: string; refreshToken?: string; expiresAt: number; refreshExpiresAt?: number; scopes: string[]; externalUserId: string; label: string; connectedAt: string; credentialFingerprint: string };
+type OAuthState = { userId: string; state: string; verifier: string; expiresAt: number; redirectUri: string; clientId: string; connectionRevision: string; credentialFingerprint: string };
+export type OwnShopListing = { id: string; title: string; description: string; tags: string[]; price: { amount: number; currency: string } | null; state: 'active' | 'draft'; url: string; images: { url: string; alt: string }[] };
+const keyFor = (userId: string) => `connections:${userId}:etsy`;
+const oauthKey = (userId: string) => `${keyFor(userId)}:oauth`;
+const cookieName = 'scout_oauth_etsy';
 const random = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
 const hash = async (value: string) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('base64url');
-const titleFor = (provider: ConnectionProvider) => provider === 'etsy' ? 'Etsy' : provider === 'pinterest' ? 'Pinterest' : 'Email';
-
-export function connectionProvider(value: string): ConnectionProvider {
-  if (!['etsy', 'pinterest', 'email'].includes(value)) throw new ApiError(404, 'Connection not found.');
-  return value as ConnectionProvider;
-}
-
-// Generic decryption deliberately shares the established encrypted settings format.
+function etsyOnly(provider: string) { if (provider !== 'etsy') throw new ApiError(410, 'This service connection has been retired. Use the manual listing-preparation tools.'); }
+export function connectionProvider(value: string): ConnectionProvider { if (!['etsy', 'pinterest', 'email'].includes(value)) throw new ApiError(404, 'Connection not found.'); etsyOnly(value); return 'etsy'; }
 export async function decryptConnectionValue<T = ProviderCredentials>(value: unknown): Promise<T> {
   try {
-    const envelope = value as EncryptedValue;
-    if (!envelope || typeof envelope.iv !== 'string' || typeof envelope.ciphertext !== 'string') throw Error();
-    const bytes = Uint8Array.from(Buffer.from(process.env.SETTINGS_ENCRYPTION_KEY || '', 'base64'));
+    const envelope = value as Encrypted; const bytes = Uint8Array.from(Buffer.from(process.env.SETTINGS_ENCRYPTION_KEY || '', 'base64'));
     const iv = Uint8Array.from(Buffer.from(envelope.iv, 'base64'));
-    if (bytes.length !== 32 || iv.length !== 12) throw Error();
+    if (bytes.length !== 32 || iv.length !== 12 || typeof envelope.ciphertext !== 'string') throw Error();
     const key = await crypto.subtle.importKey('raw', bytes, 'AES-GCM', false, ['decrypt']);
-    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, Uint8Array.from(Buffer.from(envelope.ciphertext, 'base64')));
-    return JSON.parse(new TextDecoder().decode(plaintext)) as T;
-  } catch { throw new ApiError(503, 'Connections are temporarily unavailable. Please try again later.'); }
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, Uint8Array.from(Buffer.from(envelope.ciphertext, 'base64')));
+    return JSON.parse(new TextDecoder().decode(plain)) as T;
+  } catch { throw new ApiError(503, 'The saved connection could not be loaded. Please try again later.'); }
 }
-
-export async function providerCredentials(): Promise<ProviderCredentials> {
-  const value = await readSetting('provider_credentials');
-  return value ? decryptConnectionValue<ProviderCredentials>(value) : {};
-}
-async function etsyCredentials() {
-  try {
-    const value = await decryptCredentials();
-    if (value?.key && value.secret) return value;
-  } catch { /* Keep server configuration details out of account-facing errors. */ }
-  throw new ApiError(503, 'Etsy connection is not available yet. Please try again later.');
-}
-async function oauthCredentials(provider: 'etsy' | 'pinterest') {
-  if (provider === 'etsy') { const value = await etsyCredentials(); return { id: value.key, secret: value.secret }; }
-  const value = (await providerCredentials()).pinterest;
-  if (!value?.appId || !value.appSecret) throw new ApiError(503, 'Pinterest connection is not available yet. Please try again later.');
-  return { id: value.appId, secret: value.appSecret };
-}
-async function credentialFingerprint(provider: ConnectionProvider): Promise<string | null> {
-  if (provider === 'etsy') {
-    if (!await readSetting('etsy_credentials')) return null;
-    const credentials = await etsyCredentials(); return hash(JSON.stringify([provider, credentials.key, credentials.secret]));
-  }
-  const credentials = await providerCredentials();
-  if (provider === 'pinterest') return credentials.pinterest?.appId && credentials.pinterest.appSecret ? hash(JSON.stringify([provider, credentials.pinterest.appId, credentials.pinterest.appSecret])) : null;
-  return credentials.email?.provider === 'resend' && credentials.email.apiKey && credentials.email.fromEmail ? hash(JSON.stringify([provider, credentials.email.provider, credentials.email.apiKey, credentials.email.fromEmail, credentials.email.fromName || ''])) : null;
-}
-async function storedConnection(userId: string, provider: ConnectionProvider): Promise<StoredConnection | null> {
-  const value = await readSetting(keyFor(userId, provider));
-  return value && typeof value.id === 'string' && 'encrypted' in value ? value as StoredConnection : null;
-}
-async function tokenRecord(userId: string, provider: ConnectionProvider) {
-  const stored = await storedConnection(userId, provider);
+export async function providerCredentials(): Promise<ProviderCredentials> { const value = await readSetting('provider_credentials'); return value ? decryptConnectionValue<ProviderCredentials>(value) : {}; }
+async function tokenRecord(userId: string) {
+  const stored = await readSetting(keyFor(userId)) as Stored | null;
   const record = stored?.encrypted ? await decryptConnectionValue<TokenRecord>(stored.encrypted) : null;
-  if (record && record.provider !== provider) throw new ApiError(503, 'This connection could not be loaded. Please reconnect.');
   return { stored, record };
 }
-async function replaceConnection(userId: string, provider: ConnectionProvider, expectedId: string, record: TokenRecord): Promise<boolean> {
-  const value: StoredConnection = { id: crypto.randomUUID(), encrypted: await encryptCredentials(record) };
-  const updated = await db<{ key: string }[]>('app_settings', {
-    method: 'PATCH', params: { key: 'eq.' + keyFor(userId, provider), 'value->>id': 'eq.' + expectedId },
-    body: { value }, prefer: 'return=representation',
-  });
-  return Array.isArray(updated) && updated.length === 1;
+async function replace(userId: string, expectedId: string, record: TokenRecord) {
+  const rows = await db<{ key: string }[]>('app_settings', { method: 'PATCH', params: { key: 'eq.' + keyFor(userId), 'value->>id': 'eq.' + expectedId }, body: { value: { id: crypto.randomUUID(), encrypted: await encryptCredentials(record) } }, prefer: 'return=representation' });
+  return Array.isArray(rows) && rows.length === 1;
 }
-
+function validRecord(record: TokenRecord | null, userId: string, binding: string) {
+  if (!record || record.provider !== 'etsy' || record.userId !== userId || record.credentialFingerprint !== binding || !Array.isArray(record.scopes) || record.scopes.length !== 1 || record.scopes[0] !== 'listings_r'
+    || typeof record.accessToken !== 'string' || !record.accessToken.startsWith(record.externalUserId + '.') || record.accessToken.length > 8192 || !Number.isFinite(record.expiresAt)
+    || (record.refreshExpiresAt !== undefined && !Number.isFinite(record.refreshExpiresAt))) return false;
+  try { return positiveId(record.externalUserId, 'account ID') === record.externalUserId; } catch { return false; }
+}
 export async function connectionStatus(userId: string, provider: ConnectionProvider): Promise<ConnectionStatus> {
-  const { record } = await tokenRecord(userId, provider);
-  const fingerprint = await credentialFingerprint(provider);
-  const connected = !!record && !!fingerprint && record.credentialFingerprint === fingerprint;
-  return { provider, configured: !!fingerprint, connected, label: connected ? record!.label : null, connectedAt: connected ? record!.connectedAt : null, permissions: connected ? record!.scopes : [] };
+  etsyOnly(provider); await requireCurrentTerms(userId); const status = await etsyAccessStatus(userId);
+  if (!status.available) return { provider, configured: status.configured, connected: false, label: null, connectedAt: null, permissions: [], approved: status.approved, available: false };
+  const access = await requireApprovedEtsyAccess(userId); const { record } = await tokenRecord(userId);
+  const connected = validRecord(record, userId, access.binding) && (record!.expiresAt > Date.now() || !!record!.refreshToken && !!record!.refreshExpiresAt && record!.refreshExpiresAt! > Date.now());
+  return { provider, configured: true, connected, label: connected ? record!.label : null, connectedAt: connected ? record!.connectedAt : null, permissions: connected ? ['listings_r'] : [], approved: true, available: true };
 }
-
-export async function beginConnection(userId: string, provider: ConnectionProvider, origin: string, email: string) {
-  if (provider === 'email') {
-    const status = await connectionStatus(userId, provider);
-    if (!status.configured) throw new ApiError(503, 'Email testing is not available yet. Please try again later.');
-    await writeSetting(keyFor(userId, provider), { id: crypto.randomUUID(), encrypted: await encryptCredentials({ provider, scopes: ['email:test'], label: email, connectedAt: new Date().toISOString(), credentialFingerprint: (await credentialFingerprint(provider))! } satisfies TokenRecord) });
-    return { connected: true };
-  }
-  const originUrl = new URL(origin);
-  const isLocal = ['localhost', '127.0.0.1'].includes(originUrl.hostname);
-  if (originUrl.protocol !== 'https:' && !(provider === 'pinterest' && isLocal && process.env.NODE_ENV !== 'production')) {
-    throw new ApiError(400, `${titleFor(provider)} requires a secure website address. Connect from the live website.`);
-  }
-  const credentials = await oauthCredentials(provider);
-  // A tombstone revision makes disconnects win over delayed OAuth callbacks and refreshes.
-  await db('app_settings', { method: 'POST', body: { key: keyFor(userId, provider), value: { id: crypto.randomUUID(), encrypted: null } }, prefer: 'resolution=ignore-duplicates,return=minimal' });
-  const stored = await storedConnection(userId, provider);
-  if (!stored) throw new ApiError(503, 'The connection could not be started. Please retry.');
-  const verifier = provider === 'etsy' ? random() : undefined;
-  const state: OAuthState = { provider, userId, state: random(), verifier, expiresAt: Date.now() + 600_000, redirectUri: `${origin}/api/connections/${provider}/callback`, clientId: credentials.id, connectionRevision: stored.id, credentialFingerprint: (await credentialFingerprint(provider))! };
-  await writeSetting(oauthKey(userId, provider), { stateHash: await hash(state.state), expiresAt: state.expiresAt });
-  const envelope = await encryptCredentials(state);
-  (await cookies()).set(cookieName(provider), Buffer.from(JSON.stringify(envelope)).toString('base64url'), { httpOnly: true, secure: originUrl.protocol === 'https:', sameSite: 'lax', path: `/api/connections/${provider}`, maxAge: 600 });
-  const url = new URL(provider === 'etsy' ? 'https://www.etsy.com/oauth/connect' : 'https://www.pinterest.com/oauth/');
-  url.searchParams.set('client_id', credentials.id); url.searchParams.set('redirect_uri', state.redirectUri);
-  url.searchParams.set('response_type', 'code'); url.searchParams.set('scope', scopes[provider].join(' ')); url.searchParams.set('state', state.state);
-  if (verifier) { url.searchParams.set('code_challenge', await hash(verifier)); url.searchParams.set('code_challenge_method', 'S256'); }
+export async function beginConnection(userId: string, provider: ConnectionProvider, origin: string, _email: string) {
+  etsyOnly(provider); await requireCurrentTerms(userId); const access = await requireApprovedEtsyAccess(userId);
+  if (new URL(origin).protocol !== 'https:') throw new ApiError(400, 'Etsy requires a secure website address. Connect from the live website.');
+  await db('app_settings', { method: 'POST', body: { key: keyFor(userId), value: { id: crypto.randomUUID(), encrypted: null } }, prefer: 'resolution=ignore-duplicates,return=minimal' });
+  const { stored } = await tokenRecord(userId); if (!stored) throw new ApiError(503, 'The connection could not be started. Please retry.');
+  const state: OAuthState = { userId, state: random(), verifier: random(), expiresAt: Date.now() + 600_000, redirectUri: `${origin}/api/connections/etsy/callback`, clientId: access.credentials.key, connectionRevision: stored.id, credentialFingerprint: access.binding };
+  await writeSetting(oauthKey(userId), { stateHash: await hash(state.state), expiresAt: state.expiresAt });
+  if ((await requireApprovedEtsyAccess(userId)).binding !== access.binding) throw new ApiError(409, 'Etsy access changed. Start the connection again.');
+  (await cookies()).set(cookieName, Buffer.from(JSON.stringify(await encryptCredentials(state))).toString('base64url'), { httpOnly: true, secure: true, sameSite: 'lax', path: '/api/connections/etsy', maxAge: 600 });
+  const url = new URL('https://www.etsy.com/oauth/connect');
+  Object.entries({ client_id: access.credentials.key, redirect_uri: state.redirectUri, response_type: 'code', scope: 'listings_r', state: state.state, code_challenge: await hash(state.verifier), code_challenge_method: 'S256' }).forEach(([key, value]) => url.searchParams.set(key, value));
   return { url: url.toString() };
 }
-
-async function remoteJson(url: string, init: RequestInit, provider: ConnectionProvider) {
+async function remote(userId: string, url: string, init: RequestInit, expectedBinding?: string) {
+  const access = await requireApprovedEtsyAccess(userId);
+  if (expectedBinding && access.binding !== expectedBinding) throw new ApiError(409, 'Etsy access changed. Reconnect before continuing.');
   let response: Response;
-  try { response = await fetch(url, { ...init, cache: 'no-store', signal: AbortSignal.timeout(15_000), redirect: 'error' }); }
-  catch { throw new ApiError(502, `${titleFor(provider)} could not be reached. Please try again later.`); }
-  if (response.status === 429) throw new ApiError(429, `${titleFor(provider)} is busy right now. Wait a minute and try again.`);
-  if (response.status === 401) throw new ApiError(401, `Reconnect your ${titleFor(provider)} account, then try again.`);
-  if (response.status === 403) throw new ApiError(403, `${titleFor(provider)} did not allow this action. Check your account permissions and try again.`);
-  if (response.status === 404) throw new ApiError(404, `${titleFor(provider)} could not find this item.`);
-  if (!response.ok) throw new ApiError(502, `${titleFor(provider)} could not complete the request. Please try again later.`);
-  const value = await response.json().catch(() => null);
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ApiError(502, `${titleFor(provider)} returned an invalid response. Please retry.`);
-  return value as Record<string, any>;
-}
-async function exchangeToken(provider: 'etsy' | 'pinterest', params: Record<string, string>) {
-  const credentials = await oauthCredentials(provider);
-  const headers: Record<string, string> = { 'Content-Type': 'application/x-www-form-urlencoded' };
-  const body = new URLSearchParams(params);
-  if (provider === 'etsy') body.set('client_id', credentials.id);
-  else {
-    headers.Authorization = 'Basic ' + Buffer.from(credentials.id + ':' + credentials.secret).toString('base64');
-    if (params.grant_type === 'authorization_code') body.set('continuous_refresh', 'true');
+  try { response = await fetch(url, { ...init, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(15_000) }); }
+  catch { throw new ApiError(502, 'Etsy could not be reached. Please try again later.'); }
+  if (response.status === 401 || response.status === 403) {
+    await denyObservedEtsyAccess(access.approvalRevision); await purgeUserEtsyGrant(userId);
+    throw new ApiError(503, 'Etsy access is unavailable. The operator must review the application’s approval before reconnecting.');
   }
-  return remoteJson(provider === 'etsy' ? 'https://api.etsy.com/v3/public/oauth/token' : 'https://api.pinterest.com/v5/oauth/token', { method: 'POST', headers, body: body.toString() }, provider);
+  if (response.status === 429) throw new ApiError(429, 'Etsy’s request limit was reached. Wait before trying again.');
+  if (response.status === 404) throw new ApiError(404, 'Etsy could not find your shop or listing.');
+  if (!response.ok) throw new ApiError(502, 'Etsy could not complete this request. Please try again later.');
+  const data = await response.json().catch(() => null);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new ApiError(502, 'Etsy returned an incomplete response.');
+  if ((await requireApprovedEtsyAccess(userId)).binding !== access.binding) throw new ApiError(409, 'Etsy access changed. Refresh before continuing.');
+  return data as Record<string, any>;
 }
-function validatedToken(provider: 'etsy' | 'pinterest', data: Record<string, any>, previous?: TokenRecord): TokenRecord {
-  if (typeof data.access_token !== 'string' || !data.access_token || data.access_token.length > 8192 || !Number.isFinite(data.expires_in) || data.expires_in <= 0) throw new ApiError(502, 'The account authorization could not be completed. Please reconnect.');
-  const granted = typeof data.scope === 'string' ? data.scope.split(/[ ,]+/).filter(Boolean) : previous?.scopes || [];
-  if (!scopes[provider].every(scope => granted.includes(scope))) throw new ApiError(403, `Approve the requested ${titleFor(provider)} permissions to use this connection.`);
-  const refreshToken = typeof data.refresh_token === 'string' && data.refresh_token.length <= 8192 ? data.refresh_token : previous?.refreshToken;
-  const externalUserId = provider === 'etsy' ? data.access_token.match(/^(\d+)\./)?.[1] : previous?.externalUserId;
-  if (provider === 'etsy' && !externalUserId) throw new ApiError(502, 'Etsy returned an invalid account authorization. Please reconnect.');
-  return { ...previous, provider, accessToken: data.access_token, refreshToken, scopes: granted, externalUserId, expiresAt: Date.now() + data.expires_in * 1000,
-    refreshExpiresAt: Number.isFinite(data.refresh_token_expires_at) ? data.refresh_token_expires_at * 1000 : Number.isFinite(data.refresh_token_expires_in) ? Date.now() + data.refresh_token_expires_in * 1000 : previous?.refreshExpiresAt,
-    connectedAt: previous?.connectedAt || new Date().toISOString(), label: previous?.label || `${titleFor(provider)} account` };
+async function exchange(userId: string, params: Record<string, string>, binding: string) {
+  const access = await requireApprovedEtsyAccess(userId); const body = new URLSearchParams({ ...params, client_id: access.credentials.key });
+  return remote(userId, 'https://api.etsy.com/v3/public/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() }, binding);
 }
-async function etsyWithRecord(record: TokenRecord, path: string, params: Record<string, string> = {}) {
-  if (!/^(?:users\/\d+\/shops|shops\/\d+\/receipts(?:\/\d+\/payments)?|listings\/\d+)$/.test(path)) throw new ApiError(400, 'Unsupported shop request.');
-  const credentials = await etsyCredentials(); const url = new URL('https://openapi.etsy.com/v3/application/' + path);
+async function validatedToken(userId: string, data: Record<string, any>, binding: string, previous?: TokenRecord): Promise<TokenRecord> {
+  const granted = typeof data.scope === 'string' ? data.scope.split(/\s+/).filter(Boolean) : previous?.scopes || [];
+  if (granted.length !== 1 || granted[0] !== 'listings_r') { await purgeUserEtsyGrant(userId); throw new ApiError(403, 'Approve only the requested listing-read permission. Remove the old app grant in Etsy, then reconnect.'); }
+  if (typeof data.access_token !== 'string' || !data.access_token || data.access_token.length > 8192 || !Number.isSafeInteger(data.expires_in) || data.expires_in <= 0 || data.expires_in > 86400) throw new ApiError(502, 'Etsy authorization could not be completed. Please reconnect.');
+  const externalUserId = data.access_token.match(/^(\d+)\./)?.[1];
+  try { if (!externalUserId || positiveId(externalUserId, 'account ID') !== externalUserId) throw Error(); } catch { throw new ApiError(502, 'Etsy returned an invalid account authorization.'); }
+  if (previous && previous.externalUserId !== externalUserId) { await purgeUserEtsyGrant(userId); throw new ApiError(403, 'Your Etsy account authorization changed. Reconnect your own shop.'); }
+  const refreshToken = typeof data.refresh_token === 'string' && data.refresh_token.length > 0 && data.refresh_token.length <= 8192 ? data.refresh_token : previous?.refreshToken;
+  if (refreshToken && !refreshToken.startsWith(externalUserId + '.')) { await purgeUserEtsyGrant(userId); throw new ApiError(502, 'Etsy returned an invalid account authorization.'); }
+  return { provider: 'etsy', userId, accessToken: data.access_token, refreshToken, expiresAt: Date.now() + data.expires_in * 1000,
+    refreshExpiresAt: refreshToken ? typeof data.refresh_token === 'string' ? Date.now() + 90 * 86400_000 : previous?.refreshExpiresAt : undefined,
+    scopes: ['listings_r'], externalUserId, label: previous?.label || 'Your Etsy shop', connectedAt: previous?.connectedAt || new Date().toISOString(), credentialFingerprint: binding };
+}
+async function ownRequest(userId: string, record: TokenRecord, path: string, params: Record<string, string> = {}) {
+  if (!/^(?:users\/\d+\/shops|shops\/\d+\/listings)$/.test(path)) throw new ApiError(410, 'Only your own listing catalog is available.');
+  const access = await requireApprovedEtsyAccess(userId); const url = new URL('https://openapi.etsy.com/v3/application/' + path);
   Object.entries(params).forEach(([key, value]) => url.searchParams.set(key, value));
-  return remoteJson(url.toString(), { headers: { Authorization: 'Bearer ' + record.accessToken, 'x-api-key': credentials.key + ':' + credentials.secret } }, 'etsy');
+  return remote(userId, url.toString(), { headers: { Authorization: 'Bearer ' + record.accessToken, 'x-api-key': access.credentials.key + ':' + access.credentials.secret } }, record.credentialFingerprint);
 }
-async function pinterestWithRecord(record: TokenRecord, path: string, method = 'GET', body?: unknown) {
-  if (!['boards', 'pins', 'user_account'].includes(path)) throw new ApiError(400, 'Unsupported Pinterest request.');
-  return remoteJson('https://api.pinterest.com/v5/' + path + (path === 'boards' ? '?page_size=100&privacy=PUBLIC' : ''), {
-    method, headers: { Authorization: 'Bearer ' + record.accessToken, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  }, 'pinterest');
-}
-
 export async function finishConnection(userId: string, provider: 'etsy' | 'pinterest', callbackUrl: string): Promise<'connected' | 'cancelled'> {
-  const jar = await cookies(); const cookie = jar.get(cookieName(provider))?.value;
-  jar.set(cookieName(provider), '', { httpOnly: true, secure: new URL(callbackUrl).protocol === 'https:', sameSite: 'lax', path: `/api/connections/${provider}`, maxAge: 0 });
+  etsyOnly(provider); await requireCurrentTerms(userId); const access = await requireApprovedEtsyAccess(userId);
+  const jar = await cookies(); const cookie = jar.get(cookieName)?.value;
+  jar.set(cookieName, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/api/connections/etsy', maxAge: 0 });
   const url = new URL(callbackUrl); let state: OAuthState;
   try {
-    if (!cookie || cookie.length > 8000) throw Error();
-    state = await decryptConnectionValue<OAuthState>(JSON.parse(Buffer.from(cookie, 'base64url').toString('utf8')));
-    if (state.provider !== provider || state.userId !== userId || state.expiresAt <= Date.now() || state.redirectUri !== `${url.origin}/api/connections/${provider}/callback` || !state.state || url.searchParams.get('state') !== state.state) throw Error();
-  } catch { throw new ApiError(400, 'This connection link expired or could not be verified. Start the connection again.'); }
-  const consumed = await db<{ key: string }[]>('app_settings', { method: 'DELETE', params: { key: 'eq.' + oauthKey(userId, provider), 'value->>stateHash': 'eq.' + await hash(state.state) }, prefer: 'return=representation' });
-  if (!Array.isArray(consumed) || consumed.length !== 1) throw new ApiError(400, 'This connection link was already used. Start the connection again.');
-  if (url.searchParams.has('error')) return 'cancelled';
-  const code = url.searchParams.get('code');
-  if (!code || code.length > 4096) throw new ApiError(400, 'The account authorization was not completed. Please reconnect.');
-  if ((await oauthCredentials(provider)).id !== state.clientId || await credentialFingerprint(provider) !== state.credentialFingerprint) throw new ApiError(400, 'The connection changed. Start the connection again.');
-  const data = await exchangeToken(provider, { grant_type: 'authorization_code', code, redirect_uri: state.redirectUri, ...(state.verifier ? { code_verifier: state.verifier } : {}) });
-  const record = validatedToken(provider, data);
-  record.credentialFingerprint = state.credentialFingerprint;
-  try {
-    const profile = provider === 'etsy' ? await etsyWithRecord(record, `users/${record.externalUserId}/shops`) : await pinterestWithRecord(record, 'user_account');
-    record.label = String(provider === 'etsy' ? profile.shop_name || 'Etsy account' : profile.username || 'Pinterest account').slice(0, 100);
-  } catch { /* Authorization remains valid for an account without an Etsy shop. */ }
-  if (await credentialFingerprint(provider) !== state.credentialFingerprint || !await replaceConnection(userId, provider, state.connectionRevision, record)) throw new ApiError(409, 'The connection changed. Start the connection again.');
+    if (!cookie || cookie.length > 8000) throw Error(); state = await decryptConnectionValue<OAuthState>(JSON.parse(Buffer.from(cookie, 'base64url').toString('utf8')));
+    if (state.userId !== userId || state.expiresAt <= Date.now() || state.redirectUri !== `${url.origin}/api/connections/etsy/callback` || !state.state || url.searchParams.get('state') !== state.state || state.credentialFingerprint !== access.binding || state.clientId !== access.credentials.key) throw Error();
+  } catch { throw new ApiError(400, 'This connection link expired or could not be verified. Start again.'); }
+  const consumed = await db<{ key: string }[]>('app_settings', { method: 'DELETE', params: { key: 'eq.' + oauthKey(userId), 'value->>stateHash': 'eq.' + await hash(state.state) }, prefer: 'return=representation' });
+  if (!Array.isArray(consumed) || consumed.length !== 1) throw new ApiError(400, 'This connection link was already used. Start again.');
+  if (url.searchParams.has('error')) return 'cancelled'; const code = url.searchParams.get('code'); if (!code || code.length > 4096) throw new ApiError(400, 'The account authorization was not completed.');
+  const record = await validatedToken(userId, await exchange(userId, { grant_type: 'authorization_code', code, redirect_uri: state.redirectUri, code_verifier: state.verifier }, access.binding), access.binding);
+  const shop = await ownRequest(userId, record, `users/${record.externalUserId}/shops`); positiveId(String(shop.shop_id), 'shop ID');
+  if (shop.user_id !== undefined && String(shop.user_id) !== record.externalUserId) throw new ApiError(403, 'The returned shop does not belong to the account you connected.');
+  record.label = decodeEtsyText(String(shop.shop_name || 'Your Etsy shop')).slice(0, 100);
+  if ((await requireApprovedEtsyAccess(userId)).binding !== access.binding || !await replace(userId, state.connectionRevision, record)) throw new ApiError(409, 'Your connection changed. Start again.');
   return 'connected';
 }
-
 export async function disconnectConnection(userId: string, provider: ConnectionProvider) {
-  await writeSetting(keyFor(userId, provider), { id: crypto.randomUUID(), encrypted: null });
-  await writeSetting(oauthKey(userId, provider), null);
-  (await cookies()).set(cookieName(provider), '', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: `/api/connections/${provider}`, maxAge: 0 });
+  etsyOnly(provider); await purgeUserEtsyGrant(userId);
+  (await cookies()).set(cookieName, '', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/api/connections/etsy', maxAge: 0 });
 }
 export async function activeConnection(userId: string, provider: 'etsy' | 'pinterest'): Promise<TokenRecord> {
-  const { stored, record } = await tokenRecord(userId, provider);
-  if (!stored || !record?.accessToken) throw new ApiError(409, `Connect your ${titleFor(provider)} account first.`);
-  if (record.credentialFingerprint !== await credentialFingerprint(provider)) throw new ApiError(409, `The ${titleFor(provider)} connection changed. Reconnect your account to continue.`);
-  if ((record.expiresAt || 0) > Date.now() + 60_000) return record;
-  if (!record.refreshToken || (record.refreshExpiresAt && record.refreshExpiresAt <= Date.now())) throw new ApiError(401, `Reconnect your ${titleFor(provider)} account, then try again.`);
-  const refreshed = validatedToken(provider, await exchangeToken(provider, { grant_type: 'refresh_token', refresh_token: record.refreshToken }), record);
-  if (record.credentialFingerprint !== await credentialFingerprint(provider)) throw new ApiError(409, `The ${titleFor(provider)} connection changed. Reconnect your account to continue.`);
-  if (await replaceConnection(userId, provider, stored.id, refreshed)) return refreshed;
-  const current = (await tokenRecord(userId, provider)).record;
-  if (!current?.accessToken || (current.expiresAt || 0) <= Date.now() || current.credentialFingerprint !== await credentialFingerprint(provider) || !scopes[provider].every(scope => current.scopes.includes(scope))) throw new ApiError(409, 'Your connection changed. Refresh this page and try again.');
-  return current;
+  etsyOnly(provider); await requireCurrentTerms(userId); const access = await requireApprovedEtsyAccess(userId); const { stored, record } = await tokenRecord(userId);
+  if (!stored || !validRecord(record, userId, access.binding)) throw new ApiError(409, 'Connect your Etsy shop with the current listing-read permission first.');
+  if (record!.expiresAt > Date.now() + 60_000) return record!;
+  if (!record!.refreshToken || !record!.refreshExpiresAt || record!.refreshExpiresAt <= Date.now()) { await purgeUserEtsyGrant(userId); throw new ApiError(409, 'Reconnect your Etsy shop to continue.'); }
+  const refreshed = await validatedToken(userId, await exchange(userId, { grant_type: 'refresh_token', refresh_token: record!.refreshToken! }, access.binding), access.binding, record!);
+  if ((await requireApprovedEtsyAccess(userId)).binding !== access.binding) throw new ApiError(409, 'Etsy access changed. Reconnect before continuing.');
+  if (await replace(userId, stored.id, refreshed)) return refreshed;
+  const current = (await tokenRecord(userId)).record;
+  if (!validRecord(current, userId, access.binding) || current!.expiresAt <= Date.now()) throw new ApiError(409, 'Your connection changed. Refresh before continuing.');
+  return current!;
 }
-
-export function normalizeMoney(value: unknown): Money | null {
-  const money = value as { amount?: unknown; divisor?: unknown; currency_code?: unknown };
-  if (!money || !Number.isFinite(money.amount) || !Number.isFinite(money.divisor) || Number(money.divisor) <= 0 || typeof money.currency_code !== 'string' || !/^[A-Z]{3}$/.test(money.currency_code)) return null;
-  return { amount: Number(money.amount) / Number(money.divisor), currency: money.currency_code };
+export function normalizeMoney(value: any) {
+  if (!value || !Number.isFinite(value.amount) || !Number.isFinite(value.divisor) || value.divisor <= 0 || !/^[A-Z]{3}$/.test(String(value.currency_code))) return null;
+  return { amount: value.amount / value.divisor, currency: value.currency_code as string };
 }
-export function normalizeProcessingFee(payment: Record<string, any>): Money | null {
-  const value = payment?.adjusted_fees ?? payment?.amount_fees;
-  const money = normalizeMoney(value);
-  if (money) return money;
-  // The current schema specifies Money; older payment responses use integer pennies.
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
-    const currency = typeof payment.currency === 'string' && /^[A-Z]{3}$/.test(payment.currency) ? payment.currency : 'USD';
-    return { amount: value / 100, currency };
-  }
+function image(value: any) {
+  const raw = value?.url_570xN || value?.url_fullxfull;
+  try { const url = new URL(raw); if (url.protocol === 'https:' && url.hostname === 'i.etsystatic.com' && !url.username && !url.password && !url.port) return { url: url.href, alt: typeof value.alt_text === 'string' ? value.alt_text.slice(0, 500) : '' }; } catch {}
   return null;
 }
-function safeCount(value: unknown): number | null { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null; }
-function aggregateMoney(values: (Money | null)[]) {
-  const totals = new Map<string, number>(); for (const money of values) if (money) totals.set(money.currency, (totals.get(money.currency) || 0) + money.amount);
-  return [...totals].map(([currency, amount]) => ({ currency, amount: Number(amount.toFixed(8)) }));
+export async function connectedShopListings(userId: string, options: { state: 'active' | 'draft'; limit: number; offset: number }) {
+  if (!['active', 'draft'].includes(options.state) || !Number.isInteger(options.limit) || options.limit < 1 || options.limit > 25 || !Number.isInteger(options.offset) || options.offset < 0 || options.offset > 12000) throw new ApiError(400, 'Choose active or draft listings and a valid page.');
+  const record = await activeConnection(userId, 'etsy'); const shop = await ownRequest(userId, record, `users/${record.externalUserId}/shops`); const shopId = positiveId(String(shop.shop_id), 'shop ID');
+  if (shop.user_id !== undefined && String(shop.user_id) !== record.externalUserId) throw new ApiError(403, 'The shop does not belong to your connected account.');
+  const data = await ownRequest(userId, record, `shops/${shopId}/listings`, { state: options.state, limit: String(options.limit), offset: String(options.offset), includes: 'Images' });
+  if (!Array.isArray(data.results) || data.results.length > options.limit || !Number.isSafeInteger(data.count) || data.count < 0) throw new ApiError(502, 'Etsy returned an incomplete listing page.');
+  const listings: OwnShopListing[] = data.results.map((listing: any) => {
+    if (String(listing.shop_id) !== shopId || listing.state !== options.state) throw new ApiError(502, 'Etsy returned a listing outside your requested shop or state.');
+    const listingId = positiveId(String(listing.listing_id), 'listing ID'); const images = listing.images || listing.Images || [];
+    return { id: listingId, title: decodeEtsyText(String(listing.title || '')).slice(0, 140), description: decodeEtsyText(String(listing.description || '')).slice(0, 10000), tags: Array.isArray(listing.tags) ? listing.tags.filter((tag: unknown) => typeof tag === 'string').slice(0, 13).map(decodeEtsyText) : [], price: normalizeMoney(listing.price), state: options.state,
+      url: `https://www.etsy.com/listing/${listingId}`, images: Array.isArray(images) ? images.map(image).filter((item): item is { url: string; alt: string } => !!item).slice(0, 20) : [] };
+  });
+  const current = (await tokenRecord(userId)).record;
+  if (!validRecord(current, userId, record.credentialFingerprint) || current!.externalUserId !== record.externalUserId) throw new ApiError(409, 'Your connection changed. Refresh before viewing listings.');
+  const capturedTime = Date.now(); const capturedAt = new Date(capturedTime).toISOString();
+  return { shop: { id: shopId, name: decodeEtsyText(String(shop.shop_name || 'Your Etsy shop')).slice(0, 100), url: 'https://www.etsy.com/shop/' + encodeURIComponent(String(shop.shop_name || '')) }, listings, ...options, count: data.count,
+    hasMore: listings.length > 0 && options.offset + options.limit < data.count && options.offset + options.limit <= 12000, capturedAt, expiresAt: new Date(capturedTime + 6 * 3600_000).toISOString() };
 }
-export async function connectedShop(userId: string) {
-  const record = await activeConnection(userId, 'etsy');
-  const shop = await etsyWithRecord(record, `users/${record.externalUserId}/shops`);
-  const shopId = positiveId(String(shop.shop_id), 'shop ID');
-  const since = Math.floor(Date.now() / 1000) - 30 * 86400;
-  const data = await etsyWithRecord(record, `shops/${shopId}/receipts`, { min_created: String(since), limit: '100', sort_on: 'created', sort_order: 'down' });
-  const receipts: Record<string, any>[] = Array.isArray(data.results) ? data.results.slice(0, 100) : [];
-  const orders = await Promise.all(receipts.slice(0, 5).map(async receipt => {
-    const id = positiveId(String(receipt.receipt_id), 'order ID'); let processingFee: Money | null = null;
-    try {
-      const payment = await etsyWithRecord(record, `shops/${shopId}/receipts/${id}/payments`);
-      const item = Array.isArray(payment.results) ? payment.results[0] : payment;
-      processingFee = normalizeProcessingFee(item);
-    } catch { /* A receipt may not have an Etsy Payments record. */ }
-    const timestamp = Number(receipt.created_timestamp ?? receipt.create_timestamp);
-    return { id, status: typeof receipt.status === 'string' ? receipt.status.slice(0, 40) : 'Unknown', paid: receipt.is_paid === true, shipped: receipt.is_shipped === true,
-      createdAt: Number.isFinite(timestamp) && timestamp > 0 ? new Date(timestamp * 1000).toISOString() : null, total: normalizeMoney(receipt.grandtotal), processingFee };
-  }));
-  const paid = receipts.filter(receipt => receipt.is_paid === true && !['canceled', 'cancelled'].includes(String(receipt.status).toLowerCase()));
-  return { shop: { id: shopId, name: String(shop.shop_name || 'Your Etsy shop').slice(0, 100), url: 'https://www.etsy.com/shop/' + encodeURIComponent(String(shop.shop_name || '')), activeListings: safeCount(shop.listing_active_count), totalTransactions: safeCount(shop.transaction_sold_count), currency: typeof shop.currency_code === 'string' ? shop.currency_code : null },
-    periodDays: 30, capturedAt: new Date().toISOString(), matchingOrders: safeCount(data.count), loadedOrders: receipts.length,
-    hasMore: typeof data.count === 'number' && data.count > receipts.length, paidOrders: paid.length, awaitingShipment: paid.filter(receipt => !receipt.is_shipped).length,
-    paidOrderTotals: aggregateMoney(paid.map(receipt => normalizeMoney(receipt.grandtotal))), orders,
-    note: 'Totals cover the returned paid, non-cancelled orders, include shipping and tax, and may include refunded amounts. They are not profit or payout amounts. Processing fees cover only the displayed payment records; other Etsy fees are not included.' };
-}
-
-export async function pinterestBoards(userId: string) {
-  const data = await pinterestWithRecord(await activeConnection(userId, 'pinterest'), 'boards');
-  return { boards: (Array.isArray(data.items) ? data.items : []).filter((item: any) => /^\d+$/.test(String(item.id)) && typeof item.name === 'string').map((item: any) => ({ id: String(item.id), name: item.name.slice(0, 100) })), hasMore: !!data.bookmark };
-}
-export async function connectedListing(userId: string, link: string) {
-  if (link.length > 2048) throw new ApiError(400, 'Enter your Etsy listing link.');
-  const listingId = listingIdFrom(link); const record = await activeConnection(userId, 'etsy');
-  const [shop, listing] = await Promise.all([etsyWithRecord(record, `users/${record.externalUserId}/shops`), etsyWithRecord(record, `listings/${listingId}`, { includes: 'Images' })]);
-  if (String(shop.shop_id) !== String(listing.shop_id)) throw new ApiError(403, 'Choose a listing from your connected Etsy shop.');
-  const images = listing.images || listing.Images || [];
-  const imageUrls: string[] = [];
-  if (Array.isArray(images)) for (const image of images) {
-    const value = image?.url_fullxfull || image?.url_570xN;
-    if (typeof value !== 'string') continue;
-    try { const url = new URL(value); if (url.protocol === 'https:' && url.hostname === 'i.etsystatic.com' && !url.port && !url.username && !url.password && !url.hash && url.href.length <= 2048) imageUrls.push(url.href); } catch {}
-  }
-  return { id: listingId, url: 'https://www.etsy.com/listing/' + listingId, title: typeof listing.title === 'string' ? listing.title.slice(0, 100) : '', description: typeof listing.description === 'string' ? listing.description.slice(0, 800) : '', imageUrls: [...new Set(imageUrls)].slice(0, 20) };
-}
-export function validatePin(value: Record<string, unknown>) {
-  const boardId = positiveId(String(value.boardId || ''), 'Pinterest board ID');
-  if (typeof value.title !== 'string' || !value.title.trim() || value.title.trim().length > 100) throw new ApiError(400, 'Enter a pin title between 1 and 100 characters.');
-  if (typeof value.description !== 'string' || value.description.length > 800 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value.description)) throw new ApiError(400, 'Enter a pin description up to 800 characters.');
-  if (typeof value.link !== 'string' || value.link.length > 2048) throw new ApiError(400, 'Enter your Etsy listing link.');
-  const listingId = listingIdFrom(value.link);
-  let image: URL; let link: URL;
-  try { image = new URL(String(value.imageUrl)); link = new URL(value.link); } catch { throw new ApiError(400, 'Use a valid Etsy listing and Etsy image link.'); }
-  if (link.protocol !== 'https:' || image.protocol !== 'https:' || image.hostname !== 'i.etsystatic.com' || image.port || image.username || image.password || image.hash || image.href.length > 2048) throw new ApiError(400, 'Use an HTTPS Etsy listing link and an image hosted by Etsy.');
-  if (value.confirmPublish !== true) throw new ApiError(400, 'Confirm that you want to publish this pin.');
-  return { boardId, listingId, title: value.title.trim(), description: value.description.trim(), link: 'https://www.etsy.com/listing/' + listingId, imageUrl: image.href };
-}
-export async function publishPinterest(userId: string, value: Record<string, unknown>) {
-  const pin = validatePin(value);
-  const etsyRecord = await activeConnection(userId, 'etsy');
-  const [shop, listing] = await Promise.all([etsyWithRecord(etsyRecord, `users/${etsyRecord.externalUserId}/shops`), etsyWithRecord(etsyRecord, `listings/${pin.listingId}`, { includes: 'Images' })]);
-  if (String(listing.shop_id) !== String(shop.shop_id)) throw new ApiError(403, 'Publish a listing from your connected Etsy shop.');
-  const images = listing.images || listing.Images || [];
-  const knownImage = Array.isArray(images) && images.some((image: any) => ['url_fullxfull', 'url_570xN', 'url_300x300', 'url_75x75'].some(key => image[key] === pin.imageUrl));
-  if (!knownImage) throw new ApiError(400, 'Use an image from this Etsy listing.');
-  const data = await pinterestWithRecord(await activeConnection(userId, 'pinterest'), 'pins', 'POST', { board_id: pin.boardId, title: pin.title, description: pin.description, link: pin.link, media_source: { source_type: 'image_url', url: pin.imageUrl } });
-  if (!/^\d+$/.test(String(data.id))) throw new ApiError(502, 'The pin request could not be confirmed. Check Pinterest before retrying.');
-  return { published: true, id: String(data.id), url: `https://www.pinterest.com/pin/${data.id}/` };
-}
-
-async function claimEmailQuota(userId: string) {
-  const key = keyFor(userId, 'email') + ':usage'; const now = Date.now(); const day = new Date(now).toISOString().slice(0, 10);
-  await db('app_settings', { method: 'POST', body: { key, value: { revision: crypto.randomUUID(), day, count: 0, sentAt: 0 } }, prefer: 'resolution=ignore-duplicates,return=minimal' });
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const current = await readSetting(key);
-    if (!current || typeof current.revision !== 'string') throw new ApiError(503, 'Email testing is temporarily unavailable.');
-    const count = current.day === day ? Number(current.count) || 0 : 0;
-    if (now - Number(current.sentAt) < 60_000 || count >= 10) throw new ApiError(429, count >= 10 ? 'You can send up to ten email tests per day. Try again tomorrow.' : 'Wait one minute before sending another email test.');
-    const updated = await db<{ key: string }[]>('app_settings', { method: 'PATCH', params: { key: 'eq.' + key, 'value->>revision': 'eq.' + current.revision }, body: { value: { revision: crypto.randomUUID(), day, count: count + 1, sentAt: now } }, prefer: 'return=representation' });
-    if (Array.isArray(updated) && updated.length === 1) return;
-  }
-  throw new ApiError(429, 'Another email test is being processed. Please wait and try again.');
-}
-export async function sendEmailTest(user: { userId: string; email: string }, body: Record<string, unknown>) {
-  if (body.confirmSend !== true) throw new ApiError(400, 'Confirm that you want to send a test email to yourself.');
-  if (body.to !== undefined && body.to !== user.email) throw new ApiError(400, 'Email tests can only be sent to your signed-in account.');
-  if (typeof body.subject !== 'string' || !body.subject.trim() || body.subject.length > 150 || /[\r\n\u0000]/.test(body.subject)) throw new ApiError(400, 'Enter an email subject up to 150 characters.');
-  if (typeof body.text !== 'string' || !body.text.trim() || body.text.length > 8000 || /\u0000/.test(body.text)) throw new ApiError(400, 'Enter email text up to 8,000 characters.');
-  if (typeof body.requestId !== 'string' || !/^[a-f0-9-]{36}$/i.test(body.requestId)) throw new ApiError(400, 'Refresh the page and try the email test again.');
-  const access = (await cookies()).get('scout_access')?.value;
-  const verifiedResponse = access ? await authFetch('user', { token: access }) : null;
-  const verified = verifiedResponse?.ok ? await verifiedResponse.json().catch(() => null) : null;
-  if (!verified || verified.id !== user.userId || verified.email !== user.email || typeof verified.email_confirmed_at !== 'string' || !Number.isFinite(new Date(verified.email_confirmed_at).getTime())) throw new ApiError(403, 'Confirm your account email before sending a delivery test.');
-  const status = await connectionStatus(user.userId, 'email');
-  if (!status.connected || !status.configured) throw new ApiError(409, 'Enable email testing first.');
-  const credentials = (await providerCredentials()).email!;
-  if (credentials.provider !== 'resend') throw new ApiError(503, 'Email testing is not available right now.');
-  if (/[\r\n<>]/.test(credentials.fromEmail) || /[\r\n<>]/.test(credentials.fromName || '')) throw new ApiError(503, 'Email testing is not available right now.');
-  await claimEmailQuota(user.userId);
-  const data = await remoteJson('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: 'Bearer ' + credentials.apiKey, 'Content-Type': 'application/json', 'Idempotency-Key': `scout-test:${user.userId}:${body.requestId}` }, body: JSON.stringify({ from: credentials.fromName ? `${credentials.fromName} <${credentials.fromEmail}>` : credentials.fromEmail, to: [user.email], subject: '[PNG Scout test] ' + body.subject.trim(), text: body.text.trim() }) }, 'email');
-  if (typeof data.id !== 'string') throw new ApiError(502, 'The email test could not be confirmed. Check your inbox before trying again.');
-  return { sent: true, recipient: user.email };
-}
+// Retained export names fail closed for stale callers; no external data transfer or analytics executes.
+export async function connectedShop(..._args: unknown[]): Promise<any> { return retiredEtsyFeature(); }
+export async function connectedListing(..._args: unknown[]): Promise<any> { return retiredEtsyFeature(); }
+export async function pinterestBoards(..._args: unknown[]): Promise<any> { return retiredEtsyFeature(); }
+export async function publishPinterest(..._args: unknown[]): Promise<any> { return retiredEtsyFeature(); }
+export function validatePin(..._args: unknown[]): never { return retiredEtsyFeature(); }
+export async function sendEmailTest(..._args: unknown[]): Promise<any> { return retiredEtsyFeature(); }

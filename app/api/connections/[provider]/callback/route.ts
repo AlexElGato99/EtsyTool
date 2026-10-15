@@ -1,8 +1,10 @@
 import { userAccess } from '../../../../../lib/api';
 import { connectionProvider, finishConnection } from '../../../../../lib/connections';
+import { json } from '../../../../../lib/admin';
 export const dynamic = 'force-dynamic';
 export async function GET(request: Request, context: { params: Promise<{ provider: string }> }) {
   const url = new URL(request.url); const destination = new URL('/workspace', url.origin);
+  if ((await context.params).provider !== 'etsy') return json({ error: 'This service connection has been retired.', code: 'FEATURE_RETIRED' }, 410);
   destination.searchParams.set('section', 'connections');
   let provider = '';
   try {

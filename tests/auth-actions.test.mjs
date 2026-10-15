@@ -17,6 +17,8 @@ function load(path, imports, globals = {}) {
 
 function setup(authFetch) {
   const writes = [];
+  const termsWrites = [];
+  const version = load('lib/terms-version.ts', {});
   const auth = load('lib/auth.ts', {
     'next/headers': { cookies: async () => ({ set: (...args) => writes.push(args) }) },
     './supabase': { authFetch },
@@ -26,8 +28,10 @@ function setup(authFetch) {
     './admin': admin,
     './supabase': { authFetch },
     './auth': auth,
+    './terms-version': version,
+    './application-terms': { recordTermsAcceptance: async (userId, mechanism) => termsWrites.push({ userId, mechanism }) },
   });
-  return { ...actions, writes };
+  return { ...actions, writes, termsWrites, version: version.APPLICATION_TERMS_VERSION };
 }
 
 function credentials(body, origin = 'https://scout.example') {
@@ -67,16 +71,18 @@ test('Successful password login writes secure HTTP-only session cookies', async 
 
 test('Signup requiring email confirmation does not establish a session', async () => {
   let path;
-  const { credentialsAction, writes } = setup(async value => {
+  const { credentialsAction, writes, termsWrites, version } = setup(async value => {
     path = value;
     return Response.json({ user: { id: 'unconfirmed-user', email: 'creator@example.com' } });
   });
-  const response = await credentialsAction(credentials({ email: 'creator@example.com', password: 'long-password' }), true);
+  const response = await credentialsAction(credentials({ email: 'creator@example.com', password: 'long-password', acceptTerms: true, termsVersion: version, userId: 'cannot-select-somebody-else' }), true);
   const result = await response.json();
   assert.equal(path, 'signup');
   assert.equal(result.ok, true);
   assert.equal(result.confirmationRequired, true);
   assert.equal(writes.length, 0);
+  assert.equal(termsWrites[0].userId, 'unconfirmed-user');
+  assert.equal(termsWrites[0].mechanism, 'signup');
 });
 
 test('Auth failures do not expose upstream messages or tokens', async () => {
@@ -99,4 +105,31 @@ test('Cross-origin login and signup requests are rejected before authentication'
   }
   assert.equal(calls, 0);
   assert.equal(writes.length, 0);
+});
+
+test('Signup requires explicit acceptance of the exact current terms before provider access', async () => {
+  let calls = 0;
+  const fixture = setup(async () => { calls++; });
+  for (const consent of [{}, { acceptTerms: false, termsVersion: fixture.version }, { acceptTerms: 'true', termsVersion: fixture.version }, { acceptTerms: true, termsVersion: 'old-version' }]) {
+    const response = await fixture.credentialsAction(credentials({ email: 'creator@example.com', password: 'long-password', ...consent }), true);
+    assert.equal(response.status, 400);
+  }
+  assert.equal(calls, 0); assert.equal(fixture.termsWrites.length, 0); assert.equal(fixture.writes.length, 0);
+});
+
+test('Accepted signup forwards server-stamped provisional metadata and records provider identity', async () => {
+  let sent;
+  const fixture = setup(async (_path, options) => { sent = options.body; return Response.json({ user: { id: 'provider-verified-id' }, access_token: 'access', refresh_token: 'refresh' }); });
+  const response = await fixture.credentialsAction(credentials({ email: 'creator@example.com', password: 'long-password', acceptTerms: true, termsVersion: fixture.version, acceptedAt: 'invented', userId: 'victim' }), true);
+  assert.equal(response.status, 200); assert.equal(sent.data.podadd_terms.version, fixture.version);
+  assert(Number.isFinite(Date.parse(sent.data.podadd_terms.accepted_at))); assert.notEqual(sent.data.podadd_terms.accepted_at, 'invented');
+  assert.equal(fixture.termsWrites[0].userId, 'provider-verified-id'); assert.equal(fixture.writes.length, 2);
+});
+
+test('Malformed or oversized credentials cannot reach the provider', async () => {
+  let calls = 0; const fixture = setup(async () => { calls++; });
+  for (const body of [null, [], 'text', { email: 'x@example.com', password: 'x'.repeat(5000) }]) {
+    const response = await fixture.credentialsAction(credentials(body), true); assert([400, 413].includes(response.status));
+  }
+  assert.equal(calls, 0);
 });

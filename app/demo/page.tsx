@@ -1,5 +1,5 @@
-import type { Metadata } from 'next';
-import { SiteHeader, SiteFooter } from '../../components/site-shell';
-import { ProductTour } from '../../components/product-tour';
-export const metadata: Metadata = { title: 'Product tour | PNG Scout', description: 'Explore an interactive preview of the free PNG Scout workspace and tools.' };
-export default function DemoPage() { return <><SiteHeader /><main id="main" className="container mk-section" tabIndex={-1}><div className="mk-section-heading"><span className="mk-pill">EXPLORE AT YOUR OWN PACE</span><h1>A closer look<br />at your toolkit.</h1><p>Try the preview tabs below, then open a free tool or create your account. Preview research uses clearly labeled sample listings.</p></div><ProductTour /><div className="mk-cta" style={{marginTop:55,marginBottom:0}}><h2>Ready to explore your own ideas?</h2><div className="mk-actions"><a className="button" href="/signup">Create a free account</a><a className="button button-secondary" href="/tools">Try a free tool</a></div></div></main><SiteFooter /></>; }
+import { permanentRedirect } from 'next/navigation';
+
+export default function DemoPage() {
+  permanentRedirect('/#free-access');
+}

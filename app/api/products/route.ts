@@ -1,6 +1,4 @@
-import { researchAccess,errorResponse } from '../../../lib/api';
-import { cachedProducts } from '../../../lib/etsy';
-import { searchOptionsFrom } from '../../../lib/search-options';
-import { json } from '../../../lib/admin';
-export const dynamic='force-dynamic';
-export async function GET(request:Request){try{await researchAccess();return json(await cachedProducts(searchOptionsFrom(request)))}catch(e){return errorResponse(e)}}
+﻿import { json } from '../../../lib/admin';
+export const dynamic = 'force-dynamic';
+export async function GET() { return json({ error: 'This research feature has been retired. Use the manual listing-preparation workspace.', code: 'FEATURE_RETIRED' }, 410); }
+export async function POST() { return GET(); }

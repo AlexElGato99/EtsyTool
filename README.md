@@ -1,29 +1,19 @@
-# PNG Scout — Next.js + Vercel + Supabase
+# podadd — free listing preparation
 
-A deployable version of the product-research app. The existing hosted Site is unaffected. This package uses Next.js, Vercel-compatible Node.js route handlers, Supabase PostgreSQL and Supabase email/password authentication. It uses Supabase's HTTP APIs server-side, so it does not require a PostgreSQL connection string or the Supabase JavaScript SDK.
+podadd helps sellers prepare their own listing text, save manually entered drafts, and use planning tools. The revised application scope replaces the former marketplace-research purpose. It uses Next.js, Supabase HTTP APIs, and Supabase email/password authentication; Vercel is a supported deployment target.
 
-## 1. Create Supabase and install the database
+## Run on localhost
 
-1. Create a Supabase project.
-2. Open **SQL Editor**, paste `supabase/setup.sql`, and run it.
-3. Keep the **Data API** enabled and the `public` schema exposed.
-4. Enable email/password authentication. Keep email confirmation enabled for public registrations.
-5. Copy the project URL, publishable key, and server secret key from the project's API settings. Legacy anon/service-role keys also work through the environment aliases documented below.
-
-The SQL creates settings, administrator membership, saved products, cached searches, snapshots and request counters. RLS is enabled on every table. Authenticated clients can read only their own watchlist; server-only tables deny browser access. A restricted service-role RPC enforces the research request limit, and a database trigger enforces the 100-product watchlist cap.
-
-## 2. Configure and run locally
-
-Requires Node.js 22.13 or later.
+Use Node.js 22.13 or later.
 
 ```bash
 npm ci
 cp .env.example .env.local
 ```
 
-On PowerShell, use `Copy-Item .env.example .env.local` instead of `cp`. If PowerShell blocks the npm script shim, run the commands with `npm.cmd` instead of `npm`.
+PowerShell: use `Copy-Item .env.example .env.local`. If PowerShell blocks the npm script shim, use `npm.cmd`.
 
-Fill `.env.local`:
+Set the following values in `.env.local`:
 
 ```env
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
@@ -36,34 +26,26 @@ Generate the encryption key once:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
-
-Keep this key stable and backed up. Changing it prevents decrypting stored Etsy credentials, connected-account tokens, and personal campaign settings. Do not commit `.env.local`, expose the Supabase secret key in a `NEXT_PUBLIC_` variable, or send secrets in chat. Supported legacy aliases: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
-
-```bash
 npm run dev
 ```
 
-Visit http://localhost:3000 for the public homepage, or http://localhost:3000/login to sign in. The protected research workspace is at `/workspace`. Free accounts can be created at `/signup`; if confirmation is enabled, confirm the email and then sign in. Passwords are sent only to the server and Supabase Auth. Session tokens are held in HttpOnly, SameSite cookies, with Secure cookies in production. Tokens are verified through Supabase before accepting identity; refresh tokens renew expired sessions.
+Open http://localhost:3000. The account workspace is at `/workspace`, registration at `/signup`, and owner administration at `/admin`.
 
-## Public pages and free accounts
+Keep the encryption key stable and backed up. It protects saved credentials, seller grants, and manual listing drafts. Do not commit `.env.local` or expose the server secret with a `NEXT_PUBLIC_` prefix. Legacy aliases remain supported: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
 
-The public website has an original, Alura-inspired layout in PNG Scout’s blue-purple palette, with Features, Resources and Free tools menus. It contains no copied reviews, ratings, customer counts, assets or testimonials. `/signup` creates free accounts and `/login` signs existing users in. There are no paid plans, checkout, or billing features. All available tools are free; connected providers have their own availability, approval and usage limits.
+## Database and authentication
 
-- `/features` and eleven feature pages explain product/keyword/shop research, the extension, listing checks, reminders, financial planning, Pinterest, email drafts, ads planning and manual A/B comparisons.
-- `/tools` contains ten working, anonymous browser tools: fees, listing checks, shop names, privacy drafts, profit planning, email drafts, manual Pinterest sharing, reminders, ad budgets and A/B comparisons. Inputs stay in memory; reminders persist in this browser’s local storage. Downloads and clipboard actions are explicit. Financial calculations are estimates from the entered inputs; privacy drafts require review.
-- `/blog` has original seller guides; `/help` has searchable help articles. `/demo` is an interactive product tour with labeled illustrative research. `/discover` offers starting categories, rather than unsupported best-selling rankings.
-- `/about`, `/contact`, `/brand`, `/community`, `/free`, `/etsy-docs`, `/api-docs`, `/privacy`, `/terms`, and `/etsy-disclaimer` are public. Brand SVGs and the extension ZIP can be downloaded. Reference-style URLs such as `/pricing`, `/contact-us`, and `/resources/etsy-fee-calculator` redirect to their PNG Scout equivalents.
-- `/extension` explains installing the Manifest V3 browser shortcut from the downloadable ZIP. Source is in `extension/png-scout`; after edits, rebuild `public/downloads/png-scout-extension.zip` with `Compress-Archive`. It has only `activeTab` and `storage` permissions and opens the current Etsy listing in the selected PNG Scout website. It is not published to a browser store.
-- The workspace includes **Creator tools** and **Connected accounts**. Feature destinations retain their selected section/search through login, signup and session refresh using a strict `/workspace` allowlist.
+Create a Supabase project, keep its Data API enabled, and run `supabase/setup.sql` in its SQL Editor. An existing installation must also apply `supabase/etsy-review-migration.sql` before exposing the revised app; it closes old browser access to retired research storage. Review SQL before running it. Source changes do not modify a deployed database.
 
-In Supabase Authentication, enable email/password sign-in and allow new signups. Keep email confirmation enabled for public registrations. The signup screen explains when email confirmation is required, and authenticated sessions open `/workspace`.
+Enable email/password signup and email confirmation. Sessions use HttpOnly, SameSite cookies, Secure in production. Supabase verifies identity before protected access.
 
-The owner can change the contact email and operator name in `/admin` under **Public contact details**. These values are stored in the existing `app_settings` table and used on Contact, Privacy, and Terms. The initial contact is `ayoub-k10@hotmail.com`, with `PNG Scout` as the operator name. No database migration is needed for this setting.
+Manual listing drafts are encrypted in the server-only `app_settings` table under `listing-drafts:<user-id>`. Each account can store 30 drafts, with title 140 characters, description 10,000, up to 13 tags of 20 characters each, notes 2,000, and an optional manually entered listing reference. Saving a reference does not fetch Etsy data. These records are independent from legacy Etsy research data.
 
-## 3. Make yourself administrator
+Signup validates explicit acceptance of the current terms version on the server. Existing users reaccept the updated terms before protected workspace actions. Acceptance records use `application-terms:<user-id>` with a server timestamp, version, mechanism, and policy paths. The current version is `2026-10-15-listing-preparation-v1`. An acceptance log is technical evidence of an action, not a guarantee of enforceability in every jurisdiction.
 
-Create your account first (through the app or Supabase Authentication's user creation screen), then run this in Supabase SQL Editor, replacing the email:
+## Make the owner account
+
+Create your account, then run this in Supabase SQL Editor with your own email:
 
 ```sql
 insert into public.app_admins(user_id)
@@ -71,56 +53,51 @@ select id from auth.users where lower(email)=lower('YOUR_EMAIL@example.com')
 on conflict(user_id) do nothing;
 ```
 
-Check that a row was inserted. Visit `/admin` using that account. The dashboard has a left sidebar for Overview, Etsy integration, Workspace preferences, Public contact, and Connected services. On phones, open the same sidebar with the navigation button. New users never receive administrator access automatically. Only a database administrator can change the membership table.
+Verify that membership exists. Users never become owners automatically.
 
-## 4. Deploy to Vercel
+The admin sidebar contains Overview, Etsy integration, Workspace details, Public contact, and **Etsy review & data**. Public contact email and operator name remain editable. The supplied legal operator name is **AYOUB CHIBANE**, and the initial support email is `ayoub-k10@hotmail.com`; this does not imply a company registration or address. Old product-name operator defaults display the supplied legal name; custom legal names remain unchanged.
 
-1. Upload this project to your own GitHub repository. Commit the source and `package-lock.json`; exclude `.env.local`, `node_modules` and `.next`.
-2. In Vercel, choose **Add New → Project**, import the repository and select **Next.js**.
-3. Add the four environment variables from step 2 to the Production environment. Add them separately to Preview/Development if those deployments need access; use a separate Supabase project for untrusted preview deployments.
-4. Deploy. The build command is `npm run build`; use the default Next.js output setting. No Cloudflare bindings or ChatGPT sign-in are required.
-5. In Supabase **Authentication → URL Configuration**, set Site URL to `https://YOUR_VERCEL_DOMAIN/login`. Add `http://localhost:3000/login` and your production `/login` URL as allowed redirect URLs. Confirm an account and sign in on the deployed app.
-6. If you add a custom domain, update Supabase's Site URL and allowed redirects accordingly.
+## Current scope
 
-Deployment does not migrate records from the earlier Cloudflare database. This starts a fresh Supabase database. Re-enter Etsy credentials and save products again, or plan a separate data migration if existing records matter.
+The public site explains the supported listing workflow and provides free manual tools: title/tag preparation, fee and profit planning, shop-name suggestions, privacy and email drafts, and local task reminders. Calculators use entered assumptions. Privacy drafts require review. Browser email drafting does not send a message.
 
-## 5. Activate Etsy
+Keep the public site focused: Home explains the purpose, About identifies the operator and supported work, Contact provides support, and Terms and Privacy describe the agreement and data handling. The public tools remain usable, and signup/login lead to the working private workspace. Optional technical documentation, marketing, and review-explanation pages are not necessary for an Etsy application; old URLs redirect to the retained pages. The Etsy independence notice remains visible in the footer and the service responsibilities are stated in Terms.
 
-Open `/admin` → **Etsy integration**, enter the **approved** Etsy keystring and shared secret, save them, and click **Test saved connection**. The dashboard displays the last manual connection test, rather than continuous health monitoring. Credentials are encrypted with AES-256-GCM before database storage, and stored values never return to the browser. Public listing searches use the official `x-api-key: keystring:shared_secret` header. Optional connected-shop features use separate seller OAuth permission.
+Etsy requires the relevant disclosures, support, enforceable user acceptance, and compliant functionality; it does not prescribe a particular number of public pages. Do not copy Etsy's API Terms into a new podadd policy or present these pages as proof of approval. See [Etsy API Terms, sections 1, 3 and 4](https://www.etsy.com/legal/api/).
 
-After connection succeeds:
+The account workspace saves and edits your manually entered listing drafts. An optional, approved seller catalogue is a separate temporary view of the connected seller's own active and draft listings. Its API content is not persisted as your drafts, exported as competitor research, or transferred to marketing platforms.
 
-- Explore the marketplace by keyword, or browse without a keyword. Filter by seller category, price range, shop location, shipping destination, currency and mature-content exclusion. Sort by relevance, price, creation or update date using Etsy's supported search parameters.
-- Find a shop by its exact name, numeric ID or Etsy URL. Browse its active or featured listings, filter active listings by keyword, and explore individual shop sections.
-- Look up a single listing or up to 100 listing IDs/Etsy URLs, separated by commas or whitespace.
-- Switch between grid/list views, view real Etsy images, prices, tags, favorites and creation-based age, and export displayed listings when enabled by the owner.
-- Page through marketplace/shop results in batches of 24, up to Etsy's 12,000 offset limit. Digital/physical filtering applies only to the displayed page; Etsy does not provide that global search filter.
-- Save up to 100 products per account. Refresh a saved listing to record that day's price/favorite snapshot; history retains 30 days. Refresh is manual, not a scheduled job.
-- Analyze a keyword and up to four related tags from the first result page. Competition is a heuristic based on matching API listing counts, not website ranking or demand.
-- Searches are cached for 15 minutes and categories for 24 hours. Each user can issue 15 research requests per minute; Etsy's own quotas still apply. Search thumbnails and shop metadata come from Etsy's documented batch listing endpoint.
+Marketplace search, keyword competition, competitor metrics, saved API watchlists/history, order/receipt reporting, browser-extension research, direct Pinterest publication, and email campaign APIs are retired. Legacy API routes return HTTP410 rather than serving old results. Obsolete extension downloads and feature promotions must remain retired in deployment. Internal historical folder/cookie names may remain for compatibility; they do not enable those features.
 
-The React workspace keeps connection setup and credential diagnostics out of the user interface. Users receive concise retry, validation and no-results feedback; the owner's connection test retains the technical diagnostics in `/admin`. Authentication verifies identity before rendering the workspace, with a separate fixed session-refresh route for expired sessions.
+## Etsy access is disabled by default
 
-**Not supplied by Etsy API:** competitor exact sales, reliable sales estimates, and keyword search traffic. These stay unavailable. There is no fabricated fallback dataset. Global best-selling/trending rankings, sales estimation, keyword-volume providers, scheduled jobs, billing, password recovery UI and third-party scraper integrations are not included. Ads budgets and A/B comparisons are manual calculators, not automatic Etsy campaign or listing management.
+Saving a key does not activate Etsy. The server requires a current approval declaration bound to the saved key/secret and the fixed application-purpose version before requests, OAuth flows, or seller catalogue access.
 
-## Optional connected accounts
+The operator must first obtain approval covering the revised purpose for the **same existing application** previously submitted as `png-scout`, now named `podadd`. Disclose both the name and purpose changes. Do not create a second application to evade a review decision. Record only an approval reference/date in administration; keep the actual correspondence private.
 
-No new database migration is needed. Per-user tokens and OAuth state use the existing server-only `app_settings` table; token values and provider credentials are encrypted with the established AES-256-GCM key. Responses never expose tokens. Credential changes invalidate affected user connections. Disconnect removes saved local access and prevents delayed OAuth callbacks/token refreshes from restoring it. Users can also revoke remote grants in the provider’s account settings.
+The fixed purpose is seller-owned listing preparation using the connected seller's own active and draft listings. OAuth requests only `listings_r`. Buyer emails, orders, payments, and marketing connections are not requested. PKCE, single-use state, exact HTTPS callbacks, and purpose/approval-bound grants protect the connection.
 
-1. **Etsy:** register the exact HTTPS callback `https://YOUR_DOMAIN/api/connections/etsy/callback` in your Etsy application. In the workspace’s **Connected accounts**, the seller approves `shops_r`, `listings_r`, and `transactions_r` using PKCE and single-use state. Etsy requires HTTPS, so a plain HTTP localhost callback cannot complete authorization. The own-shop overview reads up to 100 recent receipts within 30 days and up to five payment records, without exposing buyer names, emails or addresses. Totals cover the returned paid, non-cancelled receipts, can include refunded amounts, and are not profit/payout reports.
-2. **Pinterest:** in `/admin` → **Connected services**, save your approved Pinterest app ID and secret, and register the callback shown there. Users approve their account connection, load their boards, import a listing from their own connected Etsy shop, select its real image, then explicitly confirm publication. Ownership and image matching are checked server-side. This implements manual publishing, not scheduled automation.
-3. **Shared email tests:** the owner may save a Resend key and verified sender in **Connected services**. Users enable testing in **Connected accounts** and explicitly send only to their own freshly verified account email. There is a one-test-per-minute and ten-per-day user limit, plus the owner's provider limits. These shared credentials serve account self-tests.
-4. **Personal email campaigns:** each signed-in user connects their own Resend full-access API key and verified-domain sender in **Email campaigns**. PNG Scout creates a dedicated segment, records the user's consent confirmation when adding a contact, and supports membership removal, draft creation/editing/deletion, status refresh, and explicit send or scheduling. Each user can track up to 500 local contact consent records and 50 broadcasts; subject/text/name limits are 150/8,000/70 characters. Schedules must be at least 5 minutes and at most 30 days ahead. Campaigns include a provider unsubscribe link. No Etsy buyer emails are imported, and existing globally unsubscribed contacts are not resubscribed by segment membership changes.
+Current [Etsy access documentation](https://developers.etsy.com/documentation/) distinguishes own-shop Seller Apps, reviewed limited-scale Personal Apps, and Commercial Access for broader seller adoption. Free pricing does not determine access classification. This implementation conservatively limits seller/personal modes to the operator account that recorded the declaration; broader account access requires the commercial declaration. Respect the actual approved mode and scale; the owner’s recorded declaration does not grant or independently verify Etsy approval.
 
-Personal sender settings, contact consent records including email addresses, and tracked campaign records including subject/text are encrypted in per-user settings. The user's Resend account also holds contacts and campaign content. Removing a contact removes membership in the dedicated segment and records its removal locally; it does not delete the provider's global contact. Removed consent records count toward the 500-record cap. Disconnecting clears the encrypted local sender, contact, and campaign records; provider-held contacts, drafts, and scheduled campaigns remain. Cancel unwanted scheduled campaigns before disconnecting, or use Resend's dashboard afterward. Resend cancellation can return a scheduled campaign to draft or stop remaining queued deliveries; it cannot recall an email already sent.
+When valid approval exists, save the same application's key/secret in **Etsy integration**, then complete **Etsy review & data**. Register the exact live HTTPS callback `https://YOUR_DOMAIN/api/connections/etsy/callback`. Credential changes, a revised approval declaration, withdrawal, and an observed access denial remove stored Etsy seller grants and pending authorization state. Withdrawn, revoked, mismatched, or absent approval blocks access. An owner test is subject to the same gate.
 
-If a send result is uncertain, refresh the campaign status before trying to send again. The backend records requests and reconciles uncertain provider results rather than blindly repeating a send. Status describes Resend's campaign state, not guaranteed inbox delivery. No recurring marketing workflows, Etsy-triggered emails, or campaign performance dashboard are supplied. The public `/tools/email-composer` remains an anonymous draft editor with copy/download controls.
+Catalogue responses are not cached in the research database. Listing content must be refreshed or hidden within six hours; other Etsy content within 24 hours. New requests obtain current data. The browser catalogue view must enforce expiry rather than displaying an old tab indefinitely.
 
-PNG Scout charges no service fee. Users control their own provider accounts and are responsible for recipient consent, accurate sender information, a valid sender postal address where required, and applicable marketing rules. Resend's [marketing page](https://resend.com/products/marketing-emails) currently advertises a free plan for up to 1,000 contacts; PNG Scout's own contact cap is 500. The [pricing page](https://resend.com/pricing) separates contact-based Broadcast plans from `/emails` usage (currently 3,000 transactional emails/month and 100/day on the free plan). Provider quotas, approval, terms, and prices may change; check your account's current plan. PNG Scout does not upgrade provider plans or enable paid overages.
+## Withdrawal and legacy cleanup
 
-No credentials were added, provider accounts authorized, pins published, or emails sent as part of development verification. Live activation requires the operator’s provisioned apps, keys, approved scopes and registered callbacks.
+**Withdraw access** disables Etsy requests, removes saved app credentials, and removes stored seller grants and pending authorization state. **Remove previously stored Etsy data** is a separate owner action requiring explicit confirmation. It also deletes old Etsy caches, snapshots, and watchlists while preserving independently entered listing drafts.
 
-## Verification
+No live cleanup is executed during development or by applying the source changes. After deployment, the owner must use the reviewed cleanup action on the real installation if legacy records exist. Deployment checks must also confirm direct browser access to old tables is revoked. Local disconnect does not revoke a grant on Etsy’s website.
+
+Retired independent provider records from earlier versions may remain in server settings or the provider's account. They cannot be used through the retired campaign/publishing APIs. Review server-only settings keys `provider_credentials`, `connections:<user-id>:pinterest`, `connections:<user-id>:pinterest:oauth`, `connections:<user-id>:email`, and `campaigns:<user-id>:resend` for obsolete credentials, consent records, and campaign references. Remove unnecessary records through the deployed database after reviewing the affected accounts; the Etsy-specific cleanup control does not claim to remove these separate records. Manage remote grants and any previously scheduled external actions in the provider’s own account; an application update cannot recall delivered mail or published pins.
+
+## Deploy and verify
+
+1. Import this source into Vercel with the Next.js preset and the required server environment variables. Exclude `.env.local`, `node_modules`, and `.next`.
+2. Set Supabase’s Site URL and allowed authentication redirects for the production domain; include localhost for local development.
+3. Apply the reviewed database setup/upgrade SQL, then build and deploy the revised source.
+4. Verify free signup, terms reacceptance, own-draft isolation, edits/deletion, owner restrictions, and disabled Etsy access without approval.
+5. Review the operator details, support inbox, current HTTPS domain, and application name/purpose in the existing Etsy Developer Portal record. Perform approved seller OAuth testing only after actual authorization exists.
 
 ```bash
 npm run typecheck
@@ -128,19 +105,6 @@ npm test
 npm run build
 ```
 
-Tests cover verified identity, read-only workspace authentication and session refresh, administrator membership, encryption, cross-origin rejection, Etsy search parameter validation, URL/ID validation, public error sanitization, cache isolation, currency conversion, image hydration and saved-listing metadata. A production build and mocked tests can run without real secrets; live login, Supabase SQL execution, RLS policies and Etsy connectivity require your provisioned accounts and credentials.
+Tests use mocked provider/database requests. They do not establish live database permissions, approved access, or successful real account authorization. No Etsy API requests, provider messages, or cloud data deletion are performed as part of development verification.
 
-Production builds use two workers to keep memory usage manageable on local Windows machines.
-
-After deployment, verify: the homepage is publicly accessible and signed-out access to `/workspace` or `/admin` redirects to login; ordinary users see Access restricted at `/admin` and receive HTTP 403 from admin APIs; two users cannot see each other's watchlists; saved settings survive reloads; the Etsy connection test succeeds; and no secrets appear in browser responses.
-
-## Troubleshooting
-
-- **Authentication unavailable:** check all environment variables and Supabase email/password settings.
-- **Database request failed:** run the setup SQL, keep the Data API enabled, and verify the server secret key.
-- **Owner access required:** ensure your authenticated user's ID exists in `app_admins`.
-- **Email not confirmed:** verify the confirmation email or create a confirmed owner account through Supabase.
-- **Etsy rejected access:** the key must be correct and approved for your intended use; application-specific permissions still apply.
-- **Unable to decrypt credentials:** restore the original encryption key or replace the stored credentials using the current key.
-
-Official references: https://supabase.com/docs/guides/auth/passwords · https://supabase.com/docs/guides/database/postgres/row-level-security · https://supabase.com/docs/guides/api · https://developers.etsy.com/documentation/essentials/requests/
+The private implementation audit and unsent resubmission draft are in [docs/etsy-api-review.md](docs/etsy-api-review.md). They contain public policy references and application facts, not private review correspondence. Etsy decides whether to approve an application; code and documentation changes cannot guarantee approval.

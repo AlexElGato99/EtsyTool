@@ -34,7 +34,7 @@ export function ResourceCollection({ kind }: { kind: ResourceEntry['kind'] }) {
   function reset() { setQuery(''); setCategory('All topics'); }
   return <>
     <div className="rp-toolbar">
-      <label className="rp-search" htmlFor={`rp-search-${kind}`}><SiteIcon name="search" /><span className="sr-only">Search {kind === 'article' ? 'articles' : 'help guides'}</span><input id={`rp-search-${kind}`} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={kind === 'article' ? 'Search research articles…' : 'Search for a question or topic…'} /></label>
+      <label className="rp-search" htmlFor={`rp-search-${kind}`}><SiteIcon name="search" /><span className="sr-only">Search {kind === 'article' ? 'articles' : 'help guides'}</span><input id={`rp-search-${kind}`} type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={kind === 'article' ? 'Search seller guides…' : 'Search for a question or topic…'} /></label>
       <div className="rp-categories" aria-label="Filter resources by topic">{categories.map(item => <button key={item} type="button" aria-pressed={category === item} onClick={() => setCategory(item)}>{item}</button>)}</div>
     </div>
     <div className="rp-results-heading"><p role="status">{results.length} {kind === 'article' ? 'article' : 'guide'}{results.length === 1 ? '' : 's'}{category !== 'All topics' ? ` in ${category}` : ''}{query.trim() ? ` matching “${query.trim()}”` : ''}</p>{(query || category !== 'All topics') && <button className="rp-reset" type="button" onClick={reset}>Clear filters</button>}</div>
@@ -46,17 +46,17 @@ export function ResourceCollection({ kind }: { kind: ResourceEntry['kind'] }) {
 }
 
 const linkLabels: Record<string, string> = {
-  '/workspace': 'Open the workspace', '/signup': 'Create a free account', '/login': 'Sign in', '/contact': 'Contact PNG Scout',
+  '/workspace': 'Open the workspace', '/signup': 'Create a free account', '/login': 'Sign in', '/contact': 'Contact podadd',
   '/privacy': 'Privacy policy', '/api-docs': 'App API documentation', '/etsy-disclaimer': 'Etsy independence & content rights',
-  '/workspace?section=connections': 'Open Connections', '/tools': 'Explore free planning tools', '/free': 'Free access explained',
+  '/workspace?section=connections': 'Check optional connection availability', '/workspace?section=drafts': 'Open my manual drafts', '/application': 'Application purpose', '/tools': 'Explore free planning tools', '/free': 'Free access explained',
 };
 function relatedLabel(href: string) {
-  return [...articles, ...guides].find(entry => resourceHref(entry) === href)?.title || linkLabels[href] || 'Explore PNG Scout';
+  return [...articles, ...guides].find(entry => resourceHref(entry) === href)?.title || linkLabels[href] || 'Explore podadd';
 }
 
 export function ResourceArticle({ entry }: { entry: ResourceEntry }) {
   return <div className="rp-article-layout">
-    <aside className="rp-on-this-page"><h2>In this {entry.kind === 'article' ? 'article' : 'guide'}</h2><nav aria-label="On this page">{entry.sections.map(section => <a href={`#${section.id}`} key={section.id}>{section.title}</a>)}</nav><span className="rp-reading-note"><SiteIcon name="info" /> Written for the current PNG Scout workspace.</span></aside>
+    <aside className="rp-on-this-page"><h2>In this {entry.kind === 'article' ? 'article' : 'guide'}</h2><nav aria-label="On this page">{entry.sections.map(section => <a href={`#${section.id}`} key={section.id}>{section.title}</a>)}</nav><span className="rp-reading-note"><SiteIcon name="info" /> Written for the current podadd workspace.</span></aside>
     <article className="rp-article">
       {entry.sections.map(section => <section id={section.id} key={section.id}><h2>{section.title}</h2>{section.paragraphs.map(paragraph => <p key={paragraph}>{paragraph}</p>)}{section.items && <ul>{section.items.map(item => <li key={item}>{item}</li>)}</ul>}{section.note && <div className="rp-note"><SiteIcon name="info" /><p>{section.note}</p></div>}</section>)}
       <div className="rp-related"><h2>Keep exploring</h2><div>{entry.related.map(href => <Link href={href} key={href}>{relatedLabel(href)}<SiteIcon name="arrow" /></Link>)}</div></div>
@@ -64,7 +64,7 @@ export function ResourceArticle({ entry }: { entry: ResourceEntry }) {
   </div>;
 }
 
-export function ResourceCta({ title = 'Put your research into practice.', description = 'Create a free account and explore the tools in your own workspace.' }: { title?: string; description?: string }) {
+export function ResourceCta({ title = 'Start your next manual draft.', description = 'Create a free account to keep the listing text you write.' }: { title?: string; description?: string }) {
   return <section className="rp-cta"><div><h2>{title}</h2><p>{description}</p></div><Link className="rp-button" href="/signup">Create a free account <SiteIcon name="arrow" /></Link></section>;
 }
 
@@ -76,8 +76,8 @@ export function ResourceLinks({ items }: { items: { title: string; description: 
 
 export function BrandDownloads() {
   const assets = [
-    { title: 'Compass icon', description: 'An original SVG symbol with a transparent outer canvas. Suitable for square placements.', svg: brandIconSvg, filename: 'png-scout-icon.svg', className: 'rp-brand-icon' },
-    { title: 'PNG Scout wordmark', description: 'The original compass symbol and name on a transparent background. Text uses Arial with system fallbacks.', svg: brandWordmarkSvg, filename: 'png-scout-wordmark.svg', className: 'rp-brand-wordmark' },
+    { title: 'Compass icon', description: 'An original SVG symbol with a transparent outer canvas. Suitable for square placements.', svg: brandIconSvg, filename: 'podadd-icon.svg', className: 'rp-brand-icon' },
+    { title: 'podadd wordmark', description: 'The original compass symbol and name on a transparent background. Text uses Arial with system fallbacks.', svg: brandWordmarkSvg, filename: 'podadd-wordmark.svg', className: 'rp-brand-wordmark' },
   ];
   return <div className="rp-brand-downloads">{assets.map(asset => <section className="rp-brand-card" key={asset.filename}><div className={`rp-brand-preview ${asset.className}`}><img src={svgDownload(asset.svg)} alt={asset.title} width={asset.className === 'rp-brand-icon' ? 160 : 480} height={asset.className === 'rp-brand-icon' ? 160 : 120} /></div><h2>{asset.title}</h2><p>{asset.description}</p><a className="rp-button rp-button-secondary" href={svgDownload(asset.svg)} download={asset.filename}>Download SVG <SiteIcon name="file" /></a></section>)}</div>;
 }

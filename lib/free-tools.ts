@@ -5,11 +5,8 @@ export const freeTools = [
   { slug: 'shop-name-generator', title: 'Shop name generator', description: 'Combine your own ideas into a shortlist of memorable shop names.', icon: 'compass' },
   { slug: 'privacy-policy-builder', title: 'Privacy policy draft', description: 'Create an editable starting point that reflects your shop’s data practices.', icon: 'lock' },
   { slug: 'profit-planner', title: 'Profit planner', description: 'Plan orders, expenses and the break-even point using your own numbers.', icon: 'history' },
-  { slug: 'email-composer', title: 'Email campaign composer', description: 'Prepare and export a campaign draft for your own subscribers.', icon: 'email' },
-  { slug: 'pinterest-pin-composer', title: 'Pinterest pin composer', description: 'Prepare a pin for a listing and image you own, then review it on Pinterest.', icon: 'bookmark' },
-  { slug: 'followup-reminder', title: 'Order follow-up reminders', description: 'Keep your own order tasks in this browser and export calendar reminders.', icon: 'history' },
-  { slug: 'ads-budget-planner', title: 'Ads budget planner', description: 'Explore advertising scenarios from the budget and assumptions you enter.', icon: 'search' },
-  { slug: 'ab-test-planner', title: 'Listing comparison planner', description: 'Compare two variants using views and orders you record yourself.', icon: 'info' },
+  { slug: 'email-composer', title: 'Local email draft', description: 'Write and download your own text in this browser. No sending, subscribers, or provider connection.', icon: 'email' },
+  { slug: 'followup-reminder', title: 'Local task reminders', description: 'Keep your own references and dates in this browser and export local reminders.', icon: 'history' },
 ] as const satisfies readonly { slug: string; title: string; description: string; icon: ToolIcon }[];
 export type ToolSlug = typeof freeTools[number]['slug'];
 
@@ -128,19 +125,6 @@ export function safePublicUrl(value: string): string {
   if (url.protocol !== 'https:' || url.username || url.password || url.port || !url.hostname.includes('.') || value.length > 2000) throw Error('Use a complete public HTTPS URL without account credentials.');
   return url.toString();
 }
-export function etsyListingUrl(value: string): string {
-  const url = new URL(safePublicUrl(value));
-  if (!['etsy.com', 'www.etsy.com'].includes(url.hostname.toLowerCase()) || !/^\/(?:[A-Za-z-]{2,8}\/)?listing\/[1-9]\d*(?:\/|$)/.test(url.pathname)) throw Error('Use an Etsy listing URL for a listing you own.');
-  return url.toString();
-}
-export function pinterestShare(listingUrl: string, imageUrl: string, description: string) {
-  const source = etsyListingUrl(listingUrl);
-  const media = safePublicUrl(imageUrl);
-  const target = new URL('https://www.pinterest.com/pin/create/button/');
-  target.searchParams.set('url', source); target.searchParams.set('media', media); target.searchParams.set('description', description.trim().slice(0, 500));
-  return target.toString();
-}
-
 export type EmailInput = { kind: 'launch' | 'offer' | 'restock' | 'announcement'; shop: string; product: string; details: string; link: string; address: string; unsubscribe: string };
 export function composeEmail(input: EmailInput) {
   const shop = input.shop.trim() || '[Shop name]';
@@ -175,9 +159,9 @@ export function reminderCalendar(reminders: Reminder[], generatedAt = new Date()
   const stamp = generatedAt.toISOString().replaceAll('-', '').replaceAll(':', '').replace(/\.\d{3}Z$/, 'Z');
   const events = reminders.filter(reminder => !reminder.completed && validDate(reminder.due)).map(reminder => [
     'BEGIN:VEVENT', `UID:${escape(reminder.id)}@png-scout`, `DTSTAMP:${stamp}`,
-    `DTSTART;VALUE=DATE:${reminder.due.replaceAll('-', '')}`, `SUMMARY:${escape('Order task: ' + reminder.reference)}`, `DESCRIPTION:${escape(reminder.note)}`, 'END:VEVENT',
+    `DTSTART;VALUE=DATE:${reminder.due.replaceAll('-', '')}`, `SUMMARY:${escape('Task: ' + reminder.reference)}`, `DESCRIPTION:${escape(reminder.note)}`, 'END:VEVENT',
   ].join('\r\n'));
-  const content = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//PNG Scout//Local order tasks//EN', 'CALSCALE:GREGORIAN', ...events, 'END:VCALENDAR'].join('\r\n');
+  const content = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//podadd//Local tasks//EN', 'CALSCALE:GREGORIAN', ...events, 'END:VCALENDAR'].join('\r\n');
   // Calendar content lines are folded at 75 UTF-8 octets, without breaking an
   // emoji or other multibyte character. Continuation lines start with a space.
   const encoder = new TextEncoder();
@@ -190,23 +174,4 @@ export function reminderCalendar(reminders: Reminder[], generatedAt = new Date()
     }
     return folded;
   }).join('\r\n') + '\r\n';
-}
-
-export type AdsInput = { budget: number; cpc: number; conversionPercent: number; orderValue: number; orderCost: number };
-export function planAds(input: AdsInput) {
-  for (const [key, value] of Object.entries(input)) nonnegative(value, key);
-  if (input.cpc < 0.000001) throw Error('Cost per click must be at least 0.000001.');
-  percentage(input.conversionPercent, 'Conversion percentage');
-  const clicks = input.budget / input.cpc;
-  const orders = clicks * input.conversionPercent / 100;
-  const revenue = orders * input.orderValue;
-  const profit = orders * (input.orderValue - input.orderCost) - input.budget;
-  return { clicks, orders, revenue, profit, roas: input.budget > 0 ? revenue / input.budget : null };
-}
-export function compareVariants(viewsA: number, ordersA: number, viewsB: number, ordersB: number) {
-  for (const [label, value] of Object.entries({ viewsA, ordersA, viewsB, ordersB })) whole(value, label);
-  if (ordersA > viewsA || ordersB > viewsB) throw Error('Orders cannot exceed views for this comparison.');
-  const rateA = viewsA > 0 ? ordersA / viewsA * 100 : null;
-  const rateB = viewsB > 0 ? ordersB / viewsB * 100 : null;
-  return { rateA, rateB, difference: rateA !== null && rateB !== null ? rateB - rateA : null, relativeChange: rateA !== null && rateA > 0 && rateB !== null ? (rateB - rateA) / rateA * 100 : null };
 }

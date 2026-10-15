@@ -31,14 +31,18 @@ function harness() {
   const storage = new Map(); const requests = []; const contacts = new Map(); const segments = new Map(); const broadcasts = new Map();
   let serial = 100; let elapsed = 0; const startTime = Date.now();
   class Clock extends Date { constructor(...args) { super(...(args.length ? args : [startTime + elapsed])); } static now() { return startTime + elapsed; } }
-  const control = { intercept: null, domainVerified: true, segmentPages: null, senderOnly: false, afterRead: null, sends: 0 };
+  const control = { intercept: null, domainVerified: true, segmentPages: null, senderOnly: false, afterRead: null, sends: 0, failReceiptWrites: false };
   const database = async (resource, options = {}) => {
     assert.equal(resource, 'app_settings');
     const key = options.params?.key?.slice(3) || options.body?.key;
     if (options.method === 'POST') { if (!storage.has(key) || !options.prefer.includes('ignore-duplicates')) storage.set(key, structuredClone(options.body.value)); return null; }
     const current = storage.get(key);
     if (options.params?.['value->>revision'] && current?.revision !== options.params['value->>revision'].slice(3)) return [];
-    if (options.method === 'PATCH') { if (!storage.has(key)) return []; storage.set(key, structuredClone(options.body.value)); return [{ key }]; }
+    if (options.method === 'PATCH') {
+      if (!storage.has(key)) return [];
+      if (control.failReceiptWrites && options.body.value.encrypted && (await decrypt(options.body.value.encrypted)).receipts.some(receipt => receipt.action === 'create-draft')) throw Error('Mocked receipt persistence failure');
+      storage.set(key, structuredClone(options.body.value)); return [{ key }];
+    }
     return current ? [{ value: structuredClone(current) }] : [];
   };
   const list = (values, url) => {
@@ -90,7 +94,10 @@ function harness() {
       const broadcast = broadcasts.get(parts[1]); if (!broadcast) return missing();
       if (parts[2] === 'send') { control.sends++; broadcast.status = body.scheduled_at ? 'scheduled' : 'queued'; broadcast.scheduled_at = body.scheduled_at || null; return Response.json({ id: broadcast.id }); }
       if (parts[2] === 'cancel') { broadcast.status = broadcast.status === 'scheduled' ? 'draft' : 'canceled'; broadcast.scheduled_at = null; return Response.json({ id: broadcast.id }); }
-      if (method === 'PATCH') { Object.assign(broadcast, body); return Response.json({ id: broadcast.id }); }
+      if (method === 'PATCH') {
+        for (const field of Object.keys(body)) assert(['from', 'subject', 'html', 'text', 'name'].includes(field), 'Unsupported Broadcast PATCH field: ' + field);
+        Object.assign(broadcast, body); return Response.json({ id: broadcast.id });
+      }
       if (method === 'DELETE') { broadcasts.delete(broadcast.id); return Response.json({ id: broadcast.id, deleted: true }); }
       return Response.json(broadcast);
     }
@@ -109,6 +116,7 @@ function harness() {
 
 test('Own campaign connection verifies sender and full access, encrypts key and creates a user-specific segment', async () => {
   const h = harness(); const response = await h.connect(); assert.equal(response.account.connected, true); assert.equal(response.account.fromEmail, ownCredentials.fromEmail);
+  assert(response.account.segmentName.startsWith('podadd '));
   const stored = h.storage.get('campaigns:user-a:resend'); assert(stored.encrypted.ciphertext); assert(!JSON.stringify(stored).includes(ownCredentials.apiKey));
   assert(!JSON.stringify(response).includes(ownCredentials.apiKey)); assert.equal((await h.helper.campaignAccount('user-b')).connected, false);
   assert.equal(h.requests.find(request => request.method === 'POST').path, '/segments'); assert(!h.requests.some(request => request.path.includes('/audiences')));
@@ -123,6 +131,7 @@ test('Unverified domains, unrelated sender domains, sending-only keys and invali
     assert(!h.requests.some(request => request.method !== 'GET')); assert.equal((await h.helper.campaignAccount('user-a')).connected, false);
   }
   const h = harness(); await assert.rejects(h.action('connect', { ...ownCredentials, fromName: 'Sender\r\nInjected' }), error => error.status === 400); assert.equal(h.requests.length, 0);
+  for (const address of ['owner@-bad.example', 'owner@bad-.example', 'owner@.bad.example', '.owner@myshop.example']) await assert.rejects(h.action('connect', { ...ownCredentials, fromEmail: address }), error => error.status === 400);
 });
 
 test('Consent is mandatory, global unsubscribe is preserved, existing contacts are not patched or resubscribed', async () => {
@@ -147,7 +156,7 @@ test('Creating a new contact omits suppression mutation and duplicate races rere
       return Response.json({}, { status: 409 });
     }
   };
-  await assert.rejects(h2.add('raced@example.com'), error => error.status === 409); assert.equal(h2.contacts.get(id(5)).unsubscribed, true); assert(!h2.requests.some(request => request.path.endsWith('/segments') && request.method === 'POST'));
+  await assert.rejects(h2.add('raced@example.com'), error => error.status === 409); assert.equal(h2.contacts.get(id(5)).unsubscribed, true); assert(!h2.requests.some(request => /^\/contacts\/.+\/segments\//.test(request.path) && request.method === 'POST'));
 });
 
 test('Contacts pagination is scoped to the own segment and removal deletes only membership', async () => {
@@ -236,13 +245,81 @@ test('Ambiguous send keeps unknown state, blocks repeat sends, and refresh recon
   const reconciled = await h.action('refresh', { broadcastId: created.broadcast.id }); assert.equal(reconciled.broadcast.status, 'queued'); assert.equal(h.requests.filter(request => request.path.endsWith('/send')).length, 1);
 });
 
-test('Foreign-origin writes fail before authentication, database or provider access', async () => {
+test('Accepted send with an eventually consistent draft response stays blocked until confirmed', async () => {
+  const h = harness(); await h.connect(); await h.add('subscriber@example.com'); const created = await h.create(); const requestId = crypto.randomUUID();
+  h.control.intercept = async url => { if (url.pathname.endsWith('/send')) return Response.json({ id: created.broadcast.id }); };
+  const submitted = await h.action('send', { requestId, broadcastId: created.broadcast.id, confirmSend: true }); assert.equal(submitted.broadcast.status, 'unknown');
+  await h.action('send', { requestId, broadcastId: created.broadcast.id, confirmSend: true });
+  await assert.rejects(h.action('send', { broadcastId: created.broadcast.id, confirmSend: true }), error => error.status === 409);
+  assert.equal(h.requests.filter(request => request.path.endsWith('/send')).length, 1);
+  h.broadcasts.get(created.broadcast.id).status = 'queued'; const refreshed = await h.action('refresh', { broadcastId: created.broadcast.id }); assert.equal(refreshed.broadcast.status, 'queued');
+});
+
+test('Failed local receipt persistence cannot return success or cause duplicate provider creation', async () => {
+  const h = harness(); await h.connect(); h.control.failReceiptWrites = true;
+  const body = { requestId: crypto.randomUUID(), name: 'Durable draft', subject: 'Content', text: 'A saved request' };
+  await assert.rejects(h.action('create-draft', body), /Mocked receipt persistence failure/);
+  const record = await decrypt(h.storage.get('campaigns:user-a:resend').encrypted); assert.equal(record.pending.action, 'create-draft');
+  h.control.failReceiptWrites = false; const reconciled = await h.action('create-draft', body); assert.equal(reconciled.broadcast.status, 'draft');
+  assert.equal(h.requests.filter(request => request.path === '/broadcasts' && request.method === 'POST').length, 1);
+});
+
+test('An unrelated rejected cancellation does not clear an earlier uncertain send journal', async () => {
+  const h = harness(); await h.connect(); await h.add('subscriber@example.com'); const created = await h.create(); const requestId = crypto.randomUUID();
+  h.control.intercept = async url => { if (url.pathname.endsWith('/send')) throw Error('Mocked uncertain send'); };
+  await assert.rejects(h.action('send', { requestId, broadcastId: created.broadcast.id, confirmSend: true }), error => error.status === 502);
+  h.broadcasts.get(created.broadcast.id).status = 'queued';
+  h.control.intercept = async url => { if (url.pathname.endsWith('/cancel')) return Response.json({}, { status: 429 }); };
+  await assert.rejects(h.action('cancel', { broadcastId: created.broadcast.id, confirmCancel: true }), error => error.status === 429);
+  const record = await decrypt(h.storage.get('campaigns:user-a:resend').encrypted); assert.equal(record.pending.requestId, requestId); assert.equal(record.pending.action, 'send');
+});
+
+test('A successful cancellation preserves an unrelated pending creation journal', async () => {
+  const h = harness(); await h.connect(); await h.add('subscriber@example.com'); const scheduled = await h.create();
+  await h.action('send', { broadcastId: scheduled.broadcast.id, confirmSend: true, scheduledAt: new Date(h.Clock.now() + 3600_000).toISOString() });
+  const requestId = crypto.randomUUID(); const body = { requestId, name: 'Uncertain second draft', subject: 'Hello', text: 'Content' };
+  h.control.intercept = async (url, init, submitted) => {
+    if (url.pathname === '/broadcasts' && init.method === 'POST') { h.broadcasts.set(id(350), { id: id(350), ...submitted, status: 'draft', scheduled_at: null, sent_at: null }); throw Error('Mocked lost second draft response'); }
+  };
+  await assert.rejects(h.action('create-draft', body), error => error.status === 502); h.control.intercept = null;
+  await h.action('cancel', { broadcastId: scheduled.broadcast.id, confirmCancel: true });
+  const durable = await decrypt(h.storage.get('campaigns:user-a:resend').encrypted); assert.equal(durable.pending.requestId, requestId);
+  const recovered = await h.action('create-draft', body); assert.equal(recovered.broadcast.id, id(350));
+  assert.equal(h.requests.filter(request => request.path === '/broadcasts' && request.method === 'POST').length, 2);
+});
+
+test('Removing a contact frees the bounded active consent capacity without deleting global suppression', async () => {
+  const h = harness(); await h.connect(); const added = await h.add('old@example.com');
+  const stored = h.storage.get('campaigns:user-a:resend'); const record = await decrypt(stored.encrypted);
+  while (record.contacts.length < 500) record.contacts.push({ id: id(1000 + record.contacts.length), email: `previous-${record.contacts.length}@example.com`, consentAt: new Date().toISOString() });
+  stored.encrypted = await encrypt(record);
+  await assert.rejects(h.add('replacement@example.com'), error => error.status === 409);
+  await h.action('remove-contact', { contactId: added.contact.id }); assert(h.contacts.has(added.contact.id));
+  const replacement = await h.add('replacement@example.com'); assert.equal(replacement.contact.consentRecorded, true);
+  const updated = await decrypt(h.storage.get('campaigns:user-a:resend').encrypted); assert.equal(updated.contacts.length, 500); assert(!updated.contacts.some(contact => contact.id === added.contact.id));
+});
+
+test('An ambiguous segment connection reconciles its private named segment without creating another', async () => {
+  const h = harness(); const requestId = crypto.randomUUID(); let once = true;
+  h.control.intercept = async (url, init, body) => {
+    if (url.pathname === '/segments' && init.method === 'POST' && once) { once = false; h.segments.set(id(400), { id: id(400), name: body.name }); throw Error('Mocked lost segment response'); }
+  };
+  await assert.rejects(h.action('connect', { ...ownCredentials, requestId }), error => error.status === 502);
+  const pending = await h.helper.campaignAccount('user-a'); assert.equal(pending.connectionPending, true); assert.equal(pending.pendingAction, 'connect'); assert(!JSON.stringify(pending).includes(ownCredentials.apiKey));
+  const connected = await h.action('connect', { ...ownCredentials, requestId }); assert.equal(connected.account.segmentId, id(400)); assert.equal(connected.account.pendingAction, null);
+  assert.equal(h.requests.filter(request => request.path === '/segments' && request.method === 'POST').length, 1);
+});
+
+test('Retired campaign routes return 410 without identity, database, or provider access', async () => {
   let accesses = 0;
   const route = load('app/api/campaigns/route.ts', {
     '../../../lib/api': { researchAccess: async () => { accesses++; return { userId: 'user-a' }; }, parseBody: async request => request.json(), errorResponse: error => Response.json({ error: error.message }, { status: error.status || 500 }) },
-    '../../../lib/admin': { json: value => Response.json(value), sameOrigin: request => request.headers.get('origin') === new URL(request.url).origin },
+    '../../../lib/admin': { json: (value, status = 200) => Response.json(value, { status }), sameOrigin: request => request.headers.get('origin') === new URL(request.url).origin },
     '../../../lib/etsy': { ApiError }, '../../../lib/email-campaigns': { campaignAction: async () => { accesses++; } },
   });
-  const response = await route.POST(new Request('https://scout.example/api/campaigns', { method: 'POST', headers: { origin: 'https://foreign.example' }, body: JSON.stringify({ action: 'send' }) }));
-  assert.equal(response.status, 403); assert.equal(accesses, 0);
+  for (const origin of ['https://foreign.example', 'https://scout.example']) {
+    const response = await route.POST(new Request('https://scout.example/api/campaigns', { method: 'POST', headers: { origin }, body: JSON.stringify({ action: 'send' }) }));
+    assert.equal(response.status, 410); assert.equal(accesses, 0);
+  }
+  assert.equal((await route.GET()).status, 410); assert.equal(accesses, 0);
 });
