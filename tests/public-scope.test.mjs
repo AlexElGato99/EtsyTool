@@ -18,34 +18,37 @@ function load(file,dependencies={}){
 }
 const catalog=load('lib/site-content.ts');
 const tools=load('lib/free-tools.ts');
-const resources=load('lib/resources.ts');
 
-test('Current feature and guide links lead to available manual tools or account pages',()=>{
-  const staticPaths=['/','/signup','/login','/contact','/privacy','/terms','/etsy-disclaimer','/api-docs','/etsy-docs','/application','/tools','/free','/workspace'];
-  const paths=new Set([...staticPaths,...tools.freeTools.map(tool=>'/tools/'+tool.slug),...catalog.features.map(feature=>'/features/'+feature.slug),...[...resources.articles,...resources.guides].map(resources.resourceHref)]);
-  const hrefs=[...catalog.features.map(feature=>feature.href),...[...resources.articles,...resources.guides].flatMap(entry=>entry.related)];
+test('Current feature links go directly to retained tools or account pages',()=>{
+  const staticPaths=['/','/signup','/login','/about','/contact','/privacy','/terms','/tools','/workspace'];
+  const paths=new Set([...staticPaths,...tools.freeTools.map(tool=>'/tools/'+tool.slug)]);
+  const hrefs=catalog.features.map(feature=>feature.href);
   for(const href of hrefs){const url=new URL(href,'https://podadd.example');assert(paths.has(url.pathname),href);if(url.pathname==='/workspace')assert(['drafts','tools','connections',null].includes(url.searchParams.get('section')),href);}
   for(const feature of catalog.features){assert(catalog.featureGroups.includes(feature.category));assert(!catalog.retiredFeatures.includes(feature.slug));if('tool' in feature)assert(tools.freeTools.some(tool=>tool.slug===feature.tool),feature.slug);}
 });
 
-test('Retired feature URLs render a retirement notice rather than a marketing or research interface',async()=>{
-  const RetiredFeature=()=>null;
+const redirectTo=destination=>{const error=new Error('Redirect');error.destination=destination;throw error;};
+
+test('Former feature pages redirect to the current purpose or working tool without recreating marketing pages',async()=>{
   const page=load('app/features/[slug]/page.tsx',{
-    '../../../components/retired-feature':{RetiredFeature},'next/navigation':{notFound:()=>{throw Error('404');}},
-    '../../../components/site-shell':{SiteHeader:()=>null,SiteFooter:()=>null},'../../../components/site-icon':{SiteIcon:()=>null},
-    '../../../components/product-tour':{HeroWorkspace:()=>null},'../../../components/free-tools':{FreeTool:()=>null},'../../../lib/site-content':catalog,
+    'next/navigation':{notFound:()=>{throw Error('404');},permanentRedirect:redirectTo},'../../../lib/site-content':catalog,
   });
-  for(const slug of catalog.retiredFeatures){const result=await page.default({params:Promise.resolve({slug})});assert.equal(result.type,RetiredFeature,slug);assert.match((await page.generateMetadata({params:Promise.resolve({slug})})).title,/retired/i);}
+  for(const slug of catalog.retiredFeatures)await assert.rejects(page.default({params:Promise.resolve({slug})}),error=>error.destination==='/about#application-purpose',slug);
+  for(const feature of catalog.features)await assert.rejects(page.default({params:Promise.resolve({slug:feature.slug})}),error=>error.destination===feature.href,feature.slug);
   await assert.rejects(page.default({params:Promise.resolve({slug:'unrecognized-feature'})}),/404/);
 });
 
 test('Retired tool URLs cannot instantiate the previous Pinterest, ads, or analytics editors',async()=>{
-  const RetiredFeature=()=>null;
   const page=load('app/tools/[slug]/page.tsx',{
-    'next/link':{default:()=>null},'next/navigation':{notFound:()=>{throw Error('404');}},
+    'next/link':{default:()=>null},'next/navigation':{notFound:()=>{throw Error('404');},permanentRedirect:redirectTo},
     '../../../components/site-shell':{SiteHeader:()=>null,SiteFooter:()=>null},'../../../components/free-tools':{FreeTool:()=>null},
-    '../../../lib/free-tools':tools,'../../../components/retired-feature':{RetiredFeature},
+    '../../../lib/free-tools':tools,
   });
-  for(const slug of ['pinterest-pin-composer','ads-budget-planner','ab-test-planner']){const result=await page.default({params:Promise.resolve({slug})});assert.equal(result.type,RetiredFeature,slug);}
+  const redirects=await load('next.config.ts').default.redirects();
+  for(const slug of ['pinterest-pin-composer','ads-budget-planner','ab-test-planner']){
+    const redirect=redirects.find(rule=>rule.source==='/tools/'+slug);
+    assert.equal(redirect?.destination,'/tools',slug);assert.equal(redirect.permanent,true);
+    await assert.rejects(page.default({params:Promise.resolve({slug})}),/404/);
+  }
   await assert.rejects(page.default({params:Promise.resolve({slug:'unrecognized-tool'})}),/404/);
 });

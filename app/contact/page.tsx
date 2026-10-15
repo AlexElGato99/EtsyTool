@@ -32,7 +32,7 @@ export default async function ContactPage() {
         </section>
 
         <div className="centered-card-row">
-          <section className="info-card centered-card">
+          <section className="info-card centered-card" id="support">
             <PiEnvelopeBold className="info-icon" aria-hidden="true" />
             <h2>Email us directly</h2>
             <p>Your point of contact is {operatorName}. You can also reach us from your own email app.</p>

@@ -18,6 +18,7 @@ export type OwnShopListing = { id: string; title: string; description: string; t
 const keyFor = (userId: string) => `connections:${userId}:etsy`;
 const oauthKey = (userId: string) => `${keyFor(userId)}:oauth`;
 const cookieName = 'scout_oauth_etsy';
+const connectionLabel = 'Your Etsy shop';
 const random = () => Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url');
 const hash = async (value: string) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('base64url');
 function etsyOnly(provider: string) { if (provider !== 'etsy') throw new ApiError(410, 'This service connection has been retired. Use the manual listing-preparation tools.'); }
@@ -53,7 +54,7 @@ export async function connectionStatus(userId: string, provider: ConnectionProvi
   if (!status.available) return { provider, configured: status.configured, connected: false, label: null, connectedAt: null, permissions: [], approved: status.approved, available: false };
   const access = await requireApprovedEtsyAccess(userId); const { record } = await tokenRecord(userId);
   const connected = validRecord(record, userId, access.binding) && (record!.expiresAt > Date.now() || !!record!.refreshToken && !!record!.refreshExpiresAt && record!.refreshExpiresAt! > Date.now());
-  return { provider, configured: true, connected, label: connected ? record!.label : null, connectedAt: connected ? record!.connectedAt : null, permissions: connected ? ['listings_r'] : [], approved: true, available: true };
+  return { provider, configured: true, connected, label: connected ? connectionLabel : null, connectedAt: connected ? record!.connectedAt : null, permissions: connected ? ['listings_r'] : [], approved: true, available: true };
 }
 export async function beginConnection(userId: string, provider: ConnectionProvider, origin: string, _email: string) {
   etsyOnly(provider); await requireCurrentTerms(userId); const access = await requireApprovedEtsyAccess(userId);
@@ -76,7 +77,7 @@ async function remote(userId: string, url: string, init: RequestInit, expectedBi
   catch { throw new ApiError(502, 'Etsy could not be reached. Please try again later.'); }
   if (response.status === 401 || response.status === 403) {
     await denyObservedEtsyAccess(access.approvalRevision); await purgeUserEtsyGrant(userId);
-    throw new ApiError(503, 'Etsy access is unavailable. The operator must review the application’s approval before reconnecting.');
+    throw new ApiError(503, 'The shop connection is currently unavailable. You can continue with the manual tools.', 'etsy');
   }
   if (response.status === 429) throw new ApiError(429, 'Etsy’s request limit was reached. Wait before trying again.');
   if (response.status === 404) throw new ApiError(404, 'Etsy could not find your shop or listing.');
@@ -101,7 +102,7 @@ async function validatedToken(userId: string, data: Record<string, any>, binding
   if (refreshToken && !refreshToken.startsWith(externalUserId + '.')) { await purgeUserEtsyGrant(userId); throw new ApiError(502, 'Etsy returned an invalid account authorization.'); }
   return { provider: 'etsy', userId, accessToken: data.access_token, refreshToken, expiresAt: Date.now() + data.expires_in * 1000,
     refreshExpiresAt: refreshToken ? typeof data.refresh_token === 'string' ? Date.now() + 90 * 86400_000 : previous?.refreshExpiresAt : undefined,
-    scopes: ['listings_r'], externalUserId, label: previous?.label || 'Your Etsy shop', connectedAt: previous?.connectedAt || new Date().toISOString(), credentialFingerprint: binding };
+    scopes: ['listings_r'], externalUserId, label: connectionLabel, connectedAt: previous?.connectedAt || new Date().toISOString(), credentialFingerprint: binding };
 }
 async function ownRequest(userId: string, record: TokenRecord, path: string, params: Record<string, string> = {}) {
   if (!/^(?:users\/\d+\/shops|shops\/\d+\/listings)$/.test(path)) throw new ApiError(410, 'Only your own listing catalog is available.');
@@ -124,7 +125,6 @@ export async function finishConnection(userId: string, provider: 'etsy' | 'pinte
   const record = await validatedToken(userId, await exchange(userId, { grant_type: 'authorization_code', code, redirect_uri: state.redirectUri, code_verifier: state.verifier }, access.binding), access.binding);
   const shop = await ownRequest(userId, record, `users/${record.externalUserId}/shops`); positiveId(String(shop.shop_id), 'shop ID');
   if (shop.user_id !== undefined && String(shop.user_id) !== record.externalUserId) throw new ApiError(403, 'The returned shop does not belong to the account you connected.');
-  record.label = decodeEtsyText(String(shop.shop_name || 'Your Etsy shop')).slice(0, 100);
   if ((await requireApprovedEtsyAccess(userId)).binding !== access.binding || !await replace(userId, state.connectionRevision, record)) throw new ApiError(409, 'Your connection changed. Start again.');
   return 'connected';
 }
@@ -163,7 +163,7 @@ export async function connectedShopListings(userId: string, options: { state: 'a
     if (String(listing.shop_id) !== shopId || listing.state !== options.state) throw new ApiError(502, 'Etsy returned a listing outside your requested shop or state.');
     const listingId = positiveId(String(listing.listing_id), 'listing ID'); const images = listing.images || listing.Images || [];
     return { id: listingId, title: decodeEtsyText(String(listing.title || '')).slice(0, 140), description: decodeEtsyText(String(listing.description || '')).slice(0, 10000), tags: Array.isArray(listing.tags) ? listing.tags.filter((tag: unknown) => typeof tag === 'string').slice(0, 13).map(decodeEtsyText) : [], price: normalizeMoney(listing.price), state: options.state,
-      url: `https://www.etsy.com/listing/${listingId}`, images: Array.isArray(images) ? images.map(image).filter((item): item is { url: string; alt: string } => !!item).slice(0, 20) : [] };
+      url: `https://www.etsy.com/listing/${listingId}`, images: Array.isArray(images) ? images.map(image).filter((item): item is { url: string; alt: string } => !!item).slice(0, 1) : [] };
   });
   const current = (await tokenRecord(userId)).record;
   if (!validRecord(current, userId, record.credentialFingerprint) || current!.externalUserId !== record.externalUserId) throw new ApiError(409, 'Your connection changed. Refresh before viewing listings.');
